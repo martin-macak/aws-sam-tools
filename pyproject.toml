@@ -1,0 +1,86 @@
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+cfn-tools = "cfn_tools.cli:cli"
+
+[project]
+name = "cfn-tools"
+# version = "0.1.0"
+dynamic = ["version"]
+description = ""
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Martin Macak", email = "martin.macak@gmail.com"},
+]
+maintainers = [
+    {name = "Martin Macak", email = "martin.macak@gmail.com"},
+]
+keywords = ["aws", "lambda", "debugger", "serverless", "debugging", "development"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+dependencies = [
+    "click>=8.2.1",
+    "pyyaml>=6.0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/martin-macak/cfn-tools"
+Repository = "https://github.com/martin-macak/cfn-tools"
+"Bug Tracker" = "https://github.com/martin-macak/cfn-tools/issues"
+Documentation = "https://github.com/martin-macak/cfn-tools#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cfn_tools"]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+
+[tool.uv]
+dev-dependencies = [
+    "moto<5.1.0",
+    "pyright>=1.1.401",
+    "pytest>=8.3.5",
+    "ruff>=0.11.11",
+    "pre-commit>=4.2.0",
+    "types-pyyaml>=6.0.12.20250516",
+]
+
+[tool.pyright]
+include = ["cfn_tools"]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff]
+line-length = 200
+target-version = "py310"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    'ignore:datetime\.datetime\.utcnow\(\) is deprecated:DeprecationWarning'
+]
+markers = [
+    "cli: marks tests as CLI integration tests",
+]
+
