@@ -2,7 +2,6 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 import yaml
@@ -10,29 +9,19 @@ import yaml
 from cfn_tools.cfn_processing import load_yaml_file
 
 
-@click.group(invoke_without_command=True)
-@click.option(
-    "--template",
-    "-t",
-    type=click.Path(path_type=Path),
-    help="Path to the CloudFormation YAML file",
-)
-@click.option(
-    "--output",
-    "-o",
-    type=click.Path(path_type=Path),
-    help="Output file path. Use '-' for stdout",
-)
-@click.pass_context
-def cli(ctx: click.Context, template: Optional[Path], output: Optional[Path]) -> None:
+@click.group()
+def cli() -> None:
     """CloudFormation Tools - Process CloudFormation templates with custom tags."""
-    # If no subcommand is provided, invoke the default 'process' command
-    if ctx.invoked_subcommand is None:
-        # Pass the options to the process command
-        ctx.invoke(process, template=template, output=output)
+    pass
 
 
-@cli.command()
+@cli.group()
+def template() -> None:
+    """Commands for working with CloudFormation templates."""
+    pass
+
+
+@template.command()
 @click.option(
     "--template",
     "-t",
@@ -47,14 +36,8 @@ def cli(ctx: click.Context, template: Optional[Path], output: Optional[Path]) ->
     default="-",
     help="Output file path. Use '-' for stdout (default: -)",
 )
-def process(template: Optional[Path], output: Optional[Path]) -> None:
+def process(template: Path, output: Path) -> None:
     """Process all CFNTools tags in the CloudFormation YAML file."""
-    # Use defaults if not provided
-    if template is None:
-        template = Path("template.yaml")
-    if output is None:
-        output = Path("-")
-
     try:
         # Check if template exists
         if not template.exists():

@@ -1,40 +1,35 @@
 """Tests for the CLI module."""
 
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import yaml
 from click.testing import CliRunner
 
-from cfn_tools.cli import cli, process
+from cfn_tools.cli import cli
 
 
 class TestCLI:
     """Test cases for the CLI."""
 
-    def test_cli_no_command_invokes_process(self, tmp_path: Path) -> None:
-        """Test that running cli without subcommand invokes process."""
-        # Create a test template
-        template_file = tmp_path / "template.yaml"
-        template_content = """Resources:
-  TestResource:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: test-bucket"""
-        template_file.write_text(template_content)
-
+    def test_cli_no_command_shows_error(self) -> None:
+        """Test that running cli without command shows error."""
         runner = CliRunner()
-        with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = runner.invoke(cli, ["--template", str(template_file)])
+        result = runner.invoke(cli, [])
 
-        assert result.exit_code == 0
-        assert "Resources:" in result.output
-        assert "TestResource:" in result.output
+        assert result.exit_code == 2
+        assert "Usage:" in result.output
 
-    def test_process_command_default_template(self, tmp_path: Path) -> None:
-        """Test process command with default template.yaml."""
+    def test_template_no_subcommand_shows_error(self) -> None:
+        """Test that running template without subcommand shows error."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template"])
+
+        assert result.exit_code == 2
+        assert "Usage:" in result.output
+
+    def test_template_process_command_default_template(self, tmp_path: Path) -> None:
+        """Test template process command with default template.yaml."""
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=tmp_path):
             # Create default template.yaml
@@ -44,13 +39,13 @@ Resources:
     Type: AWS::S3::Bucket"""
             Path("template.yaml").write_text(template_content)
 
-            result = runner.invoke(cli, ["process"])
+            result = runner.invoke(cli, ["template", "process"])
 
         assert result.exit_code == 0
         assert "Description: Test template" in result.output
 
-    def test_process_command_with_cfntools_tags(self, tmp_path: Path) -> None:
-        """Test process command with CFNTools tags."""
+    def test_template_process_command_with_cfntools_tags(self, tmp_path: Path) -> None:
+        """Test template process command with CFNTools tags."""
         # Create a test template with CFNTools tags
         template_file = tmp_path / "template.yaml"
         template_content = """Parameters:
@@ -63,7 +58,7 @@ Resources:
         template_file.write_text(template_content)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--template", str(template_file)])
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file)])
 
         assert result.exit_code == 0
         output_data = yaml.safe_load(result.output)
@@ -77,8 +72,8 @@ Resources:
         version_value = output_data["Parameters"]["Version"]["Default"]
         assert version_value  # Should have some version string
 
-    def test_process_command_with_output_file(self, tmp_path: Path) -> None:
-        """Test process command with output file."""
+    def test_template_process_command_with_output_file(self, tmp_path: Path) -> None:
+        """Test template process command with output file."""
         template_file = tmp_path / "template.yaml"
         output_file = tmp_path / "output.yaml"
 
@@ -90,7 +85,7 @@ Resources:
         template_file.write_text(template_content)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--template", str(template_file), "--output", str(output_file)])
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file), "--output", str(output_file)])
 
         assert result.exit_code == 0
         assert f"Processed template written to: {output_file}" in result.output
@@ -100,16 +95,16 @@ Resources:
         output_data = yaml.safe_load(output_file.read_text())
         assert output_data["Resources"]["Bucket"]["Properties"]["BucketName"] == "my-bucket"
 
-    def test_process_command_template_not_found(self) -> None:
-        """Test process command when template file doesn't exist."""
+    def test_template_process_command_template_not_found(self) -> None:
+        """Test template process command when template file doesn't exist."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--template", "nonexistent.yaml"])
+        result = runner.invoke(cli, ["template", "process", "--template", "nonexistent.yaml"])
 
         assert result.exit_code == 1
         assert "Error: Template file not found" in result.output
 
-    def test_process_command_invalid_yaml(self, tmp_path: Path) -> None:
-        """Test process command with invalid YAML."""
+    def test_template_process_command_invalid_yaml(self, tmp_path: Path) -> None:
+        """Test template process command with invalid YAML."""
         template_file = tmp_path / "invalid.yaml"
         template_content = """Resources:
   Bucket:
@@ -120,13 +115,13 @@ Resources:
         template_file.write_text(template_content)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--template", str(template_file)])
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file)])
 
         assert result.exit_code == 1
         assert "Error: Failed to parse YAML" in result.output
 
-    def test_process_command_cfntools_error(self, tmp_path: Path) -> None:
-        """Test process command when CFNTools tag has error."""
+    def test_template_process_command_cfntools_error(self, tmp_path: Path) -> None:
+        """Test template process command when CFNTools tag has error."""
         template_file = tmp_path / "template.yaml"
         template_content = """Resources:
   Test:
@@ -135,7 +130,7 @@ Resources:
         template_file.write_text(template_content)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--template", str(template_file)])
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file)])
 
         assert result.exit_code == 1
         assert "Error:" in result.output
@@ -149,18 +144,27 @@ Resources:
         assert "CloudFormation Tools" in result.output
         assert "Process CloudFormation templates" in result.output
 
-    def test_process_help(self) -> None:
-        """Test process subcommand help."""
+    def test_template_help(self) -> None:
+        """Test template command help."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--help"])
+        result = runner.invoke(cli, ["template", "--help"])
+
+        assert result.exit_code == 0
+        assert "Commands for working with CloudFormation templates" in result.output
+        assert "process" in result.output
+
+    def test_template_process_help(self) -> None:
+        """Test template process subcommand help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "process", "--help"])
 
         assert result.exit_code == 0
         assert "Process all CFNTools tags" in result.output
         assert "--template" in result.output
         assert "--output" in result.output
 
-    def test_process_with_included_file(self, tmp_path: Path) -> None:
-        """Test process command with file inclusion."""
+    def test_template_process_with_included_file(self, tmp_path: Path) -> None:
+        """Test template process command with file inclusion."""
         # Create included file
         include_file = tmp_path / "config.yaml"
         include_content = """database:
@@ -180,7 +184,7 @@ Resources:
         template_file.write_text(template_content)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "--template", str(template_file)])
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file)])
 
         assert result.exit_code == 0
         output_data = yaml.safe_load(result.output)
@@ -195,7 +199,7 @@ Resources:
         template_file.write_text("test: value")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", option, str(template_file)])
+        result = runner.invoke(cli, ["template", "process", option, str(template_file)])
 
         assert result.exit_code == 0
         assert "test: value" in result.output
@@ -208,7 +212,23 @@ Resources:
         template_file.write_text("test: value")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["process", "-t", str(template_file), option, str(output_file)])
+        result = runner.invoke(cli, ["template", "process", "-t", str(template_file), option, str(output_file)])
 
         assert result.exit_code == 0
         assert output_file.exists()
+
+    def test_invalid_command(self) -> None:
+        """Test invalid command shows error."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["invalid"])
+
+        assert result.exit_code == 2  # Click's usage error
+        assert "No such command" in result.output
+
+    def test_invalid_template_subcommand(self) -> None:
+        """Test invalid template subcommand shows error."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "invalid"])
+
+        assert result.exit_code == 2  # Click's usage error
+        assert "No such command" in result.output
