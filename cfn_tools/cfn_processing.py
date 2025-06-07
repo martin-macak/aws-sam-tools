@@ -18,7 +18,29 @@ except ImportError:
     Version = None
     get_version = None
 
-from cfn_tools.cfn_yaml import CloudFormationLoader, CloudFormationTag, get_node_type_name, SubTag
+from cfn_tools.cfn_yaml import (
+    CloudFormationLoader,
+    CloudFormationTag,
+    get_node_type_name,
+    SubTag,
+    RefTag,
+    GetAttTag,
+    GetAZsTag,
+    ImportValueTag,
+    JoinTag,
+    SelectTag,
+    SplitTag,
+    FindInMapTag,
+    Base64Tag,
+    CidrTag,
+    TransformTag,
+    AndTag,
+    EqualsTag,
+    IfTag,
+    NotTag,
+    OrTag,
+    ConditionTag,
+)
 
 
 class CFNToolsIncludeFileTag(CloudFormationTag):
@@ -455,13 +477,88 @@ CloudFormationProcessingLoader.add_constructor("!CFNToolsTimestamp", construct_c
 CloudFormationProcessingLoader.add_constructor("!CFNToolsCRC", construct_cfntools_crc)
 
 
-def load_yaml(stream: str, file_name: Optional[str] = None) -> Dict[str, Any]:
+def replace_cloudformation_tags(data: Any) -> Any:
+    """
+    Recursively replace CloudFormation tags with their intrinsic function equivalents.
+
+    Tag mappings:
+    - !Ref -> {"Ref": value}
+    - !GetAtt -> {"Fn::GetAtt": value}
+    - !GetAZs -> {"Fn::GetAZs": value}
+    - !ImportValue -> {"Fn::ImportValue": value}
+    - !Join -> {"Fn::Join": value}
+    - !Select -> {"Fn::Select": value}
+    - !Split -> {"Fn::Split": value}
+    - !Sub -> {"Fn::Sub": value}
+    - !FindInMap -> {"Fn::FindInMap": value}
+    - !Base64 -> {"Fn::Base64": value}
+    - !Cidr -> {"Fn::Cidr": value}
+    - !Transform -> {"Fn::Transform": value}
+    - !And -> {"Fn::And": value}
+    - !Equals -> {"Fn::Equals": value}
+    - !If -> {"Fn::If": value}
+    - !Not -> {"Fn::Not": value}
+    - !Or -> {"Fn::Or": value}
+    - !Condition -> {"Condition": value}
+    """
+    if isinstance(data, RefTag):
+        return {"Ref": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, GetAttTag):
+        return {"Fn::GetAtt": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, GetAZsTag):
+        return {"Fn::GetAZs": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, ImportValueTag):
+        return {"Fn::ImportValue": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, JoinTag):
+        return {"Fn::Join": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, SelectTag):
+        return {"Fn::Select": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, SplitTag):
+        return {"Fn::Split": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, SubTag):
+        # Sub tag stores value as a list, but for simple strings we want just the string
+        replaced_value = replace_cloudformation_tags(data.value)
+        if isinstance(replaced_value, list) and len(replaced_value) == 1:
+            return {"Fn::Sub": replaced_value[0]}
+        else:
+            return {"Fn::Sub": replaced_value}
+    elif isinstance(data, FindInMapTag):
+        return {"Fn::FindInMap": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, Base64Tag):
+        return {"Fn::Base64": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, CidrTag):
+        return {"Fn::Cidr": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, TransformTag):
+        return {"Fn::Transform": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, AndTag):
+        return {"Fn::And": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, EqualsTag):
+        return {"Fn::Equals": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, IfTag):
+        return {"Fn::If": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, NotTag):
+        return {"Fn::Not": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, OrTag):
+        return {"Fn::Or": replace_cloudformation_tags(data.value)}
+    elif isinstance(data, ConditionTag):
+        # Condition is not an intrinsic function but a reference
+        return {"Condition": data.value}
+    elif isinstance(data, dict):
+        return {k: replace_cloudformation_tags(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [replace_cloudformation_tags(v) for v in data]
+    else:
+        return data
+
+
+def load_yaml(stream: str, file_name: Optional[str] = None, replace_tags: bool = False) -> Dict[str, Any]:
     """
     Load YAML content with CloudFormation and CFNTools processing tag support.
 
     Args:
         stream: YAML content as string
         file_name: Optional file name to resolve relative paths
+        replace_tags: If True, replace CloudFormation tags with intrinsic functions
 
     Returns:
         Dict containing the parsed YAML with all tags processed
@@ -470,21 +567,25 @@ def load_yaml(stream: str, file_name: Optional[str] = None) -> Dict[str, Any]:
     if file_name:
         loader.name = file_name
     try:
-        return loader.get_single_data()
+        data = loader.get_single_data()
+        if replace_tags:
+            data = replace_cloudformation_tags(data)
+        return data
     finally:
         loader.dispose()
 
 
-def load_yaml_file(file_path: str) -> Dict[str, Any]:
+def load_yaml_file(file_path: str, replace_tags: bool = False) -> Dict[str, Any]:
     """
     Load YAML file with CloudFormation and CFNTools processing tag support.
 
     Args:
         file_path: Path to the YAML file
+        replace_tags: If True, replace CloudFormation tags with intrinsic functions
 
     Returns:
         Dict containing the parsed YAML with all tags processed
     """
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
-    return load_yaml(content, file_path)
+    return load_yaml(content, file_path, replace_tags)

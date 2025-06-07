@@ -36,7 +36,13 @@ def template() -> None:
     default="-",
     help="Output file path. Use '-' for stdout (default: -)",
 )
-def process(template: Path, output: Path) -> None:
+@click.option(
+    "--replace-tags",
+    is_flag=True,
+    default=False,
+    help="Replace CloudFormation tags with intrinsic functions",
+)
+def process(template: Path, output: Path, replace_tags: bool) -> None:
     """Process all CFNTools tags in the CloudFormation YAML file."""
     try:
         # Check if template exists
@@ -45,7 +51,7 @@ def process(template: Path, output: Path) -> None:
             sys.exit(1)
 
         # Load and process the template
-        processed_data = load_yaml_file(str(template))
+        processed_data = load_yaml_file(str(template), replace_tags=replace_tags)
 
         # Convert to YAML string
         output_yaml = yaml.dump(

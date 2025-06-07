@@ -232,3 +232,83 @@ Resources:
 
         assert result.exit_code == 2  # Click's usage error
         assert "No such command" in result.output
+
+    def test_template_process_with_replace_tags(self, tmp_path: Path) -> None:
+        """Test template process command with --replace-tags option."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketParam
+  MyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-function'
+      Role: !GetAtt LambdaRole.Arn"""
+        template_file.write_text(template_content)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file), "--replace-tags"])
+
+        assert result.exit_code == 0
+        output_data = yaml.safe_load(result.output)
+
+        # Check that tags were replaced with intrinsic functions
+        assert output_data["Resources"]["MyBucket"]["Properties"]["BucketName"] == {"Ref": "BucketParam"}
+        assert output_data["Resources"]["MyFunction"]["Properties"]["FunctionName"] == {"Fn::Sub": "${AWS::StackName}-function"}
+        assert output_data["Resources"]["MyFunction"]["Properties"]["Role"] == {"Fn::GetAtt": ["LambdaRole", "Arn"]}
+
+    def test_template_process_without_replace_tags(self, tmp_path: Path) -> None:
+        """Test that tags are preserved when --replace-tags is not specified."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketParam"""
+        template_file.write_text(template_content)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file)])
+
+        assert result.exit_code == 0
+        # When not using --replace-tags, the YAML dumper will convert tags to their string representation
+        # The exact output depends on how PyYAML handles custom tags
+        assert "BucketParam" in result.output
+
+    def test_template_process_replace_tags_with_cfntools_tags(self, tmp_path: Path) -> None:
+        """Test that --replace-tags works with both CloudFormation and CFNTools tags."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """Parameters:
+  BucketName:
+    Type: String
+    Default: !CFNToolsToString
+      - !Ref AWS::StackName
+      - ConvertTo: JSONString
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName"""
+        template_file.write_text(template_content)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "process", "--template", str(template_file), "--replace-tags"])
+
+        assert result.exit_code == 0
+        output_data = yaml.safe_load(result.output)
+
+        # Check that CloudFormation tags were replaced
+        assert output_data["Resources"]["MyBucket"]["Properties"]["BucketName"] == {"Ref": "BucketName"}
+        # CFNTools tags should be processed to their values
+        assert isinstance(output_data["Parameters"]["BucketName"]["Default"], str)
+
+    def test_template_process_help_shows_replace_tags(self) -> None:
+        """Test that --replace-tags option is shown in help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "process", "--help"])
+
+        assert result.exit_code == 0
+        assert "--replace-tags" in result.output
+        assert "Replace CloudFormation tags with intrinsic functions" in result.output

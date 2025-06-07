@@ -95,6 +95,48 @@ class GetAZsTag(CloudFormationTag):
     pass
 
 
+class TransformTag(CloudFormationTag):
+    """Represents !Transform tag."""
+
+    pass
+
+
+class AndTag(CloudFormationTag):
+    """Represents !And tag."""
+
+    pass
+
+
+class EqualsTag(CloudFormationTag):
+    """Represents !Equals tag."""
+
+    pass
+
+
+class IfTag(CloudFormationTag):
+    """Represents !If tag."""
+
+    pass
+
+
+class NotTag(CloudFormationTag):
+    """Represents !Not tag."""
+
+    pass
+
+
+class OrTag(CloudFormationTag):
+    """Represents !Or tag."""
+
+    pass
+
+
+class ConditionTag(CloudFormationTag):
+    """Represents !Condition tag."""
+
+    pass
+
+
 def construct_ref(loader: yaml.Loader, node: yaml.Node) -> RefTag:
     """Construct !Ref tag."""
     if not isinstance(node, yaml.ScalarNode):
@@ -107,12 +149,23 @@ def construct_ref(loader: yaml.Loader, node: yaml.Node) -> RefTag:
 
 def construct_get_att(loader: yaml.Loader, node: yaml.Node) -> GetAttTag:
     """Construct !GetAtt tag."""
-    if not isinstance(node, yaml.SequenceNode):
-        raise yaml.constructor.ConstructorError(None, None, "expected a sequence node, but found %s" % get_node_type_name(node), node.start_mark)
-    value = loader.construct_sequence(node)
-    if len(value) != 2:
-        raise yaml.constructor.ConstructorError(None, None, "expected 2 items in sequence, but found %d" % len(value), node.start_mark)
-    return GetAttTag(value)
+    if isinstance(node, yaml.ScalarNode):
+        # Support dot notation: !GetAtt MyResource.MyAttribute
+        value = loader.construct_scalar(node)
+        if "." not in value:
+            raise yaml.constructor.ConstructorError(None, None, "!GetAtt scalar must contain a dot (e.g., Resource.Attribute)", node.start_mark)
+        # Split only on the first dot to handle attributes with dots
+        parts = value.split(".", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise yaml.constructor.ConstructorError(None, None, "!GetAtt scalar must be in format Resource.Attribute", node.start_mark)
+        return GetAttTag(parts)
+    elif isinstance(node, yaml.SequenceNode):
+        value = loader.construct_sequence(node)
+        if len(value) != 2:
+            raise yaml.constructor.ConstructorError(None, None, "expected 2 items in sequence, but found %d" % len(value), node.start_mark)
+        return GetAttTag(value)
+    else:
+        raise yaml.constructor.ConstructorError(None, None, "expected a scalar or sequence node, but found %s" % get_node_type_name(node), node.start_mark)
 
 
 def construct_sub(loader: yaml.Loader, node: yaml.Node) -> SubTag:
@@ -204,6 +257,73 @@ def construct_get_azs(loader: yaml.Loader, node: yaml.Node) -> GetAZsTag:
     return GetAZsTag(loader.construct_scalar(node))
 
 
+def construct_transform(loader: yaml.Loader, node: yaml.Node) -> TransformTag:
+    """Construct !Transform tag."""
+    if not isinstance(node, yaml.MappingNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a mapping node, but found %s" % get_node_type_name(node), node.start_mark)
+    return TransformTag(loader.construct_mapping(node))
+
+
+def construct_and(loader: yaml.Loader, node: yaml.Node) -> AndTag:
+    """Construct !And tag."""
+    if not isinstance(node, yaml.SequenceNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a sequence node, but found %s" % get_node_type_name(node), node.start_mark)
+    values = loader.construct_sequence(node)
+    if len(values) < 2 or len(values) > 10:
+        raise yaml.constructor.ConstructorError(None, None, "!And must have between 2 and 10 conditions", node.start_mark)
+    return AndTag(values)
+
+
+def construct_equals(loader: yaml.Loader, node: yaml.Node) -> EqualsTag:
+    """Construct !Equals tag."""
+    if not isinstance(node, yaml.SequenceNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a sequence node, but found %s" % get_node_type_name(node), node.start_mark)
+    values = loader.construct_sequence(node)
+    if len(values) != 2:
+        raise yaml.constructor.ConstructorError(None, None, "expected 2 items in sequence, but found %d" % len(values), node.start_mark)
+    return EqualsTag(values)
+
+
+def construct_if(loader: yaml.Loader, node: yaml.Node) -> IfTag:
+    """Construct !If tag."""
+    if not isinstance(node, yaml.SequenceNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a sequence node, but found %s" % get_node_type_name(node), node.start_mark)
+    values = loader.construct_sequence(node)
+    if len(values) != 3:
+        raise yaml.constructor.ConstructorError(None, None, "expected 3 items in sequence (condition, true_value, false_value), but found %d" % len(values), node.start_mark)
+    return IfTag(values)
+
+
+def construct_not(loader: yaml.Loader, node: yaml.Node) -> NotTag:
+    """Construct !Not tag."""
+    if not isinstance(node, yaml.SequenceNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a sequence node, but found %s" % get_node_type_name(node), node.start_mark)
+    values = loader.construct_sequence(node)
+    if len(values) != 1:
+        raise yaml.constructor.ConstructorError(None, None, "expected 1 item in sequence, but found %d" % len(values), node.start_mark)
+    return NotTag(values)
+
+
+def construct_or(loader: yaml.Loader, node: yaml.Node) -> OrTag:
+    """Construct !Or tag."""
+    if not isinstance(node, yaml.SequenceNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a sequence node, but found %s" % get_node_type_name(node), node.start_mark)
+    values = loader.construct_sequence(node)
+    if len(values) < 2 or len(values) > 10:
+        raise yaml.constructor.ConstructorError(None, None, "!Or must have between 2 and 10 conditions", node.start_mark)
+    return OrTag(values)
+
+
+def construct_condition(loader: yaml.Loader, node: yaml.Node) -> ConditionTag:
+    """Construct !Condition tag."""
+    if not isinstance(node, yaml.ScalarNode):
+        raise yaml.constructor.ConstructorError(None, None, "expected a scalar node, but found %s" % get_node_type_name(node), node.start_mark)
+    value = loader.construct_scalar(node)
+    if not value:
+        raise yaml.constructor.ConstructorError(None, None, "!Condition must specify a condition name", node.start_mark)
+    return ConditionTag(value)
+
+
 class CloudFormationLoader(yaml.SafeLoader):
     """Custom YAML loader that supports CloudFormation tags."""
 
@@ -222,6 +342,13 @@ CloudFormationLoader.add_constructor("!Base64", construct_base64)
 CloudFormationLoader.add_constructor("!Cidr", construct_cidr)
 CloudFormationLoader.add_constructor("!ImportValue", construct_import_value)
 CloudFormationLoader.add_constructor("!GetAZs", construct_get_azs)
+CloudFormationLoader.add_constructor("!Transform", construct_transform)
+CloudFormationLoader.add_constructor("!And", construct_and)
+CloudFormationLoader.add_constructor("!Equals", construct_equals)
+CloudFormationLoader.add_constructor("!If", construct_if)
+CloudFormationLoader.add_constructor("!Not", construct_not)
+CloudFormationLoader.add_constructor("!Or", construct_or)
+CloudFormationLoader.add_constructor("!Condition", construct_condition)
 
 
 def load_yaml(stream: str) -> Dict[str, Any]:

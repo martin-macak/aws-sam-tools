@@ -7,6 +7,7 @@ import yaml
 from cfn_tools.cfn_processing import (
     load_yaml,
     load_yaml_file,
+    replace_cloudformation_tags,
 )
 
 
