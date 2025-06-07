@@ -1,10 +1,22 @@
+import base64
+import hashlib
 import json
 import mimetypes
 import os
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from dunamai import Style
 import yaml
+
+try:
+    from dunamai import Version, get_version
+except ImportError:
+    # Provide a fallback if dunamai is not available
+    Version = None
+    get_version = None
 
 from cfn_tools.cfn_yaml import CloudFormationLoader, CloudFormationTag, get_node_type_name, SubTag
 
@@ -17,6 +29,30 @@ class CFNToolsIncludeFileTag(CloudFormationTag):
 
 class CFNToolsToStringTag(CloudFormationTag):
     """Represents !CFNToolsToString tag."""
+
+    pass
+
+
+class CFNToolsUUIDTag(CloudFormationTag):
+    """Represents !CFNToolsUUID tag."""
+
+    pass
+
+
+class CFNToolsVersionTag(CloudFormationTag):
+    """Represents !CFNToolsVersion tag."""
+
+    pass
+
+
+class CFNToolsTimestampTag(CloudFormationTag):
+    """Represents !CFNToolsTimestamp tag."""
+
+    pass
+
+
+class CFNToolsCRCTag(CloudFormationTag):
+    """Represents !CFNToolsCRC tag."""
 
     pass
 
@@ -153,6 +189,257 @@ def construct_cfntools_to_string(loader: yaml.Loader, node: yaml.Node) -> str:
     return result
 
 
+def construct_cfntools_uuid(loader: yaml.Loader, node: yaml.Node) -> str:
+    """Construct !CFNToolsUUID tag."""
+    if not isinstance(node, yaml.ScalarNode) or node.value:
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            "!CFNToolsUUID takes no arguments",
+            node.start_mark,
+        )
+
+    return str(uuid.uuid4())
+
+
+def construct_cfntools_version(loader: yaml.Loader, node: yaml.Node) -> str:
+    """Construct !CFNToolsVersion tag."""
+    # Default values
+    source = "Git"
+    style = "semver"
+
+    if isinstance(node, yaml.MappingNode):
+        # Parse optional parameters
+        options = loader.construct_mapping(node)
+
+        if "Source" in options:
+            source = options["Source"]
+            if source not in ["Git", "Any"]:
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f'!CFNToolsVersion Source must be "Git" or "Any", got "{source}"',
+                    node.start_mark,
+                )
+
+        if "Style" in options:
+            style = options["Style"]
+            if style not in ["semver", "pep440"]:
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f'!CFNToolsVersion Style must be "semver" or "pep440", got "{style}"',
+                    node.start_mark,
+                )
+    elif not isinstance(node, yaml.ScalarNode) or node.value:
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            "!CFNToolsVersion takes no arguments or a mapping of options",
+            node.start_mark,
+        )
+
+    # Get version using dunamai
+    if get_version is None:
+        # Fallback if dunamai is not available
+        return "0.0.0-dev"
+
+    try:
+        if source == "Git":
+            version = get_version("git")
+        else:
+            version = get_version("any")
+
+        if style == "semver":
+            return version.serialize()
+        else:  # pep440
+            return version.serialize(style=Style.Pep440)
+    except Exception:
+        # Fallback if version detection fails
+        return "0.0.0-dev"
+
+
+def construct_cfntools_timestamp(loader: yaml.Loader, node: yaml.Node) -> str:
+    """Construct !CFNToolsTimestamp tag."""
+    # Default values
+    format_str = None  # Will use ISO-8601 by default
+    offset = 0
+    offset_unit = "seconds"
+
+    if isinstance(node, yaml.MappingNode):
+        # Parse optional parameters
+        options = loader.construct_mapping(node)
+
+        if "Format" in options:
+            format_str = options["Format"]
+            if not isinstance(format_str, str):
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"!CFNToolsTimestamp Format must be a string, got {type(format_str).__name__}",
+                    node.start_mark,
+                )
+
+        if "Offset" in options:
+            offset = options["Offset"]
+            if not isinstance(offset, int):
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"!CFNToolsTimestamp Offset must be an integer, got {type(offset).__name__}",
+                    node.start_mark,
+                )
+
+        if "OffsetUnit" in options:
+            offset_unit = options["OffsetUnit"]
+            valid_units = ["seconds", "minutes", "hours", "days", "weeks", "months", "years"]
+            if offset_unit not in valid_units:
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f'!CFNToolsTimestamp OffsetUnit must be one of {valid_units}, got "{offset_unit}"',
+                    node.start_mark,
+                )
+    elif not isinstance(node, yaml.ScalarNode) or node.value:
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            "!CFNToolsTimestamp takes no arguments or a mapping of options",
+            node.start_mark,
+        )
+
+    # Get current time in UTC
+    now = datetime.now(timezone.utc)
+
+    # Apply offset
+    if offset != 0:
+        delta = timedelta()  # Default
+        if offset_unit == "seconds":
+            delta = timedelta(seconds=offset)
+        elif offset_unit == "minutes":
+            delta = timedelta(minutes=offset)
+        elif offset_unit == "hours":
+            delta = timedelta(hours=offset)
+        elif offset_unit == "days":
+            delta = timedelta(days=offset)
+        elif offset_unit == "weeks":
+            delta = timedelta(weeks=offset)
+        elif offset_unit == "months":
+            # Approximate month as 30 days
+            delta = timedelta(days=offset * 30)
+        elif offset_unit == "years":
+            # Approximate year as 365 days
+            delta = timedelta(days=offset * 365)
+
+        now = now + delta
+
+    # Format the timestamp
+    if format_str:
+        return now.strftime(format_str)
+    else:
+        # ISO-8601 format with Z suffix
+        return now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def construct_cfntools_crc(loader: yaml.Loader, node: yaml.Node) -> str:
+    """Construct !CFNToolsCRC tag."""
+    if not isinstance(node, yaml.SequenceNode):
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            f"expected a sequence node, but found {get_node_type_name(node)}",
+            node.start_mark,
+        )
+
+    values = loader.construct_sequence(node, deep=True)
+    if not values:
+        raise yaml.constructor.ConstructorError(None, None, "!CFNToolsCRC requires at least one parameter", node.start_mark)
+
+    # First element is the value to checksum
+    value = values[0]
+
+    # Default values
+    algorithm = "sha256"
+    encoding = "hex"
+
+    if len(values) > 1:
+        if not isinstance(values[1], dict):
+            raise yaml.constructor.ConstructorError(None, None, "!CFNToolsCRC optional parameters must be a mapping", node.start_mark)
+
+        options = values[1]
+        if "Algorithm" in options:
+            algorithm = options["Algorithm"]
+            valid_algorithms = ["md5", "sha1", "sha256", "sha512"]
+            if algorithm not in valid_algorithms:
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f'!CFNToolsCRC Algorithm must be one of {valid_algorithms}, got "{algorithm}"',
+                    node.start_mark,
+                )
+
+        if "Encoding" in options:
+            encoding = options["Encoding"]
+            if encoding not in ["hex", "base64"]:
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f'!CFNToolsCRC Encoding must be "hex" or "base64", got "{encoding}"',
+                    node.start_mark,
+                )
+
+    # Prepare data for hashing
+    if isinstance(value, str):
+        if value.startswith("file://"):
+            # Read file content
+            file_path = value[7:]  # Remove "file://" prefix
+
+            # If relative path, resolve from YAML file location
+            if not os.path.isabs(file_path):
+                if hasattr(loader, "name") and loader.name:
+                    base_dir = os.path.dirname(loader.name)
+                    file_path = os.path.join(base_dir, file_path)
+                else:
+                    file_path = os.path.abspath(file_path)
+
+            if not os.path.exists(file_path):
+                raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsCRC: file not found: {file_path}", node.start_mark)
+
+            try:
+                with open(file_path, "rb") as f:
+                    data = f.read()
+            except Exception as e:
+                raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsCRC: error reading file {file_path}: {str(e)}", node.start_mark)
+        else:
+            # Use string as-is
+            data = value.encode("utf-8")
+    elif isinstance(value, (dict, list)):
+        # Convert to JSON string for consistent hashing
+        data = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    else:
+        # Convert other types to string
+        data = str(value).encode("utf-8")
+
+    # Calculate hash
+    hasher = hashlib.sha256()  # Default
+    if algorithm == "md5":
+        hasher = hashlib.md5()
+    elif algorithm == "sha1":
+        hasher = hashlib.sha1()
+    elif algorithm == "sha256":
+        hasher = hashlib.sha256()
+    elif algorithm == "sha512":
+        hasher = hashlib.sha512()
+
+    hasher.update(data)
+
+    # Encode result
+    if encoding == "hex":
+        return hasher.hexdigest()
+    else:  # base64
+        return base64.b64encode(hasher.digest()).decode("ascii")
+
+
 class CloudFormationProcessingLoader(CloudFormationLoader):
     """Extended YAML loader that supports CloudFormation tags and CFNTools processing tags."""
 
@@ -162,6 +449,10 @@ class CloudFormationProcessingLoader(CloudFormationLoader):
 # Register the new processing tags
 CloudFormationProcessingLoader.add_constructor("!CFNToolsIncludeFile", construct_cfntools_include_file)
 CloudFormationProcessingLoader.add_constructor("!CFNToolsToString", construct_cfntools_to_string)
+CloudFormationProcessingLoader.add_constructor("!CFNToolsUUID", construct_cfntools_uuid)
+CloudFormationProcessingLoader.add_constructor("!CFNToolsVersion", construct_cfntools_version)
+CloudFormationProcessingLoader.add_constructor("!CFNToolsTimestamp", construct_cfntools_timestamp)
+CloudFormationProcessingLoader.add_constructor("!CFNToolsCRC", construct_cfntools_crc)
 
 
 def load_yaml(stream: str, file_name: Optional[str] = None) -> Dict[str, Any]:

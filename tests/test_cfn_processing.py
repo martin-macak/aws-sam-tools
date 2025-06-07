@@ -398,3 +398,382 @@ class TestIntegration:
         # Check new tag worked
         assert isinstance(result["Resources"]["Bucket"]["Properties"]["Policy"], str)
         assert "Statement" in result["Resources"]["Bucket"]["Properties"]["Policy"]
+
+
+class TestCFNToolsUUID:
+    """Test cases for !CFNToolsUUID tag."""
+
+    def test_generate_uuid(self) -> None:
+        """Test generating a UUID."""
+        yaml_content = """MyStack:
+  Id: !CFNToolsUUID"""
+
+        result = load_yaml(yaml_content)
+        uuid_str = result["MyStack"]["Id"]
+
+        # Check it's a valid UUID format (36 chars with hyphens in right places)
+        assert len(uuid_str) == 36
+        assert uuid_str[8] == "-"
+        assert uuid_str[13] == "-"
+        assert uuid_str[18] == "-"
+        assert uuid_str[23] == "-"
+
+        # Verify it's a valid UUID by trying to parse it
+        import uuid
+
+        uuid.UUID(uuid_str)  # Will raise if invalid
+
+    def test_multiple_uuids_are_different(self) -> None:
+        """Test that multiple UUID tags generate different values."""
+        yaml_content = """MyStack:
+  Id1: !CFNToolsUUID
+  Id2: !CFNToolsUUID"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Id1"] != result["MyStack"]["Id2"]
+
+    def test_invalid_with_arguments(self) -> None:
+        """Test error when UUID tag has arguments."""
+        yaml_content = """MyStack:
+  Id: !CFNToolsUUID some-arg"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="takes no arguments"):
+            load_yaml(yaml_content)
+
+
+class TestCFNToolsVersion:
+    """Test cases for !CFNToolsVersion tag."""
+
+    def test_default_version(self, monkeypatch) -> None:
+        """Test generating version with defaults."""
+        # Mock dunamai to return a known version
+        from unittest.mock import Mock
+
+        mock_version = Mock()
+        mock_version.serialize.return_value = "1.0.0-dev.1+123e4567"
+
+        def mock_get_version(source):
+            return mock_version
+
+        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Version"] == "1.0.0-dev.1+123e4567"
+        mock_version.serialize.assert_called_once()
+
+    def test_version_with_pep440_style(self, monkeypatch) -> None:
+        """Test generating version with pep440 style."""
+        from unittest.mock import Mock
+        from dunamai import Style
+
+        mock_version = Mock()
+        mock_version.serialize.return_value = "1.0.0.dev1+123e4567"
+
+        def mock_get_version(source):
+            return mock_version
+
+        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion { Style: pep440 }"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Version"] == "1.0.0.dev1+123e4567"
+        mock_version.serialize.assert_called_once_with(style=Style.Pep440)
+
+    def test_version_with_any_source(self, monkeypatch) -> None:
+        """Test generating version with Any source."""
+        from unittest.mock import Mock
+
+        mock_version = Mock()
+        mock_version.serialize.return_value = "2.0.0"
+
+        mock_get_version = Mock(return_value=mock_version)
+        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion { Source: Any }"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Version"] == "2.0.0"
+        mock_get_version.assert_called_once_with("any")
+
+    def test_version_fallback_no_dunamai(self, monkeypatch) -> None:
+        """Test fallback when dunamai is not available."""
+        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", None)
+
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Version"] == "0.0.0-dev"
+
+    def test_version_fallback_on_error(self, monkeypatch) -> None:
+        """Test fallback when version detection fails."""
+
+        def mock_get_version(source):
+            raise Exception("Git not found")
+
+        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Version"] == "0.0.0-dev"
+
+    def test_invalid_source(self) -> None:
+        """Test error with invalid source."""
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion { Source: SVN }"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match='Source must be "Git" or "Any"'):
+            load_yaml(yaml_content)
+
+    def test_invalid_style(self) -> None:
+        """Test error with invalid style."""
+        yaml_content = """MyStack:
+  Version: !CFNToolsVersion { Style: custom }"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match='Style must be "semver" or "pep440"'):
+            load_yaml(yaml_content)
+
+
+class TestCFNToolsTimestamp:
+    """Test cases for !CFNToolsTimestamp tag."""
+
+    def test_default_timestamp(self) -> None:
+        """Test generating timestamp with defaults (ISO-8601)."""
+        yaml_content = """MyStack:
+  Timestamp: !CFNToolsTimestamp"""
+
+        result = load_yaml(yaml_content)
+        timestamp = result["MyStack"]["Timestamp"]
+
+        # Check ISO-8601 format with Z suffix
+        assert timestamp.endswith("Z")
+        assert len(timestamp) == 20  # YYYY-MM-DDTHH:MM:SSZ
+        assert timestamp[10] == "T"
+
+        # Verify it can be parsed
+        from datetime import datetime
+
+        datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+    def test_custom_format(self) -> None:
+        """Test timestamp with custom format."""
+        yaml_content = """MyStack:
+  Timestamp: !CFNToolsTimestamp { Format: "%Y-%m-%d %H:%M:%S" }"""
+
+        result = load_yaml(yaml_content)
+        timestamp = result["MyStack"]["Timestamp"]
+
+        # Check format YYYY-MM-DD HH:MM:SS
+        assert len(timestamp) == 19
+        assert timestamp[4] == "-"
+        assert timestamp[7] == "-"
+        assert timestamp[10] == " "
+        assert timestamp[13] == ":"
+        assert timestamp[16] == ":"
+
+    def test_timestamp_with_offset(self, monkeypatch) -> None:
+        """Test timestamp with offset."""
+        # Mock datetime to have a fixed time
+        from datetime import datetime, timezone, timedelta
+
+        fixed_time = datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+        class MockDatetime:
+            @staticmethod
+            def now(tz):
+                return fixed_time
+
+        monkeypatch.setattr("cfn_tools.cfn_processing.datetime", MockDatetime)
+
+        yaml_content = """MyStack:
+  Timestamp: !CFNToolsTimestamp { Offset: 1, OffsetUnit: minutes }"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Timestamp"] == "2021-01-01T00:01:00Z"
+
+    def test_timestamp_with_various_offsets(self, monkeypatch) -> None:
+        """Test timestamp with different offset units."""
+        from datetime import datetime, timezone
+
+        fixed_time = datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+        class MockDatetime:
+            @staticmethod
+            def now(tz):
+                return fixed_time
+
+        monkeypatch.setattr("cfn_tools.cfn_processing.datetime", MockDatetime)
+
+        # Test hours offset
+        yaml_content = """MyStack:
+  Hour: !CFNToolsTimestamp { Offset: 2, OffsetUnit: hours }
+  Day: !CFNToolsTimestamp { Offset: 1, OffsetUnit: days }
+  Week: !CFNToolsTimestamp { Offset: 1, OffsetUnit: weeks }"""
+
+        result = load_yaml(yaml_content)
+        assert result["MyStack"]["Hour"] == "2021-01-01T02:00:00Z"
+        assert result["MyStack"]["Day"] == "2021-01-02T00:00:00Z"
+        assert result["MyStack"]["Week"] == "2021-01-08T00:00:00Z"
+
+    def test_invalid_format_type(self) -> None:
+        """Test error when Format is not a string."""
+        yaml_content = """MyStack:
+  Timestamp: !CFNToolsTimestamp { Format: 123 }"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="Format must be a string"):
+            load_yaml(yaml_content)
+
+    def test_invalid_offset_type(self) -> None:
+        """Test error when Offset is not an integer."""
+        yaml_content = """MyStack:
+  Timestamp: !CFNToolsTimestamp { Offset: "1" }"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="Offset must be an integer"):
+            load_yaml(yaml_content)
+
+    def test_invalid_offset_unit(self) -> None:
+        """Test error with invalid offset unit."""
+        yaml_content = """MyStack:
+  Timestamp: !CFNToolsTimestamp { OffsetUnit: microseconds }"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="OffsetUnit must be one of"):
+            load_yaml(yaml_content)
+
+
+class TestCFNToolsCRC:
+    """Test cases for !CFNToolsCRC tag."""
+
+    def test_string_checksum_default(self) -> None:
+        """Test checksum of a string with default settings (SHA256, hex)."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "Hello, World!" ]"""
+
+        result = load_yaml(yaml_content)
+        # SHA256 of "Hello, World!" in hex
+        expected = "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        assert result["MyStack"]["CRC"] == expected
+
+    def test_dict_checksum(self) -> None:
+        """Test checksum of a dictionary."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ { "name": "John", "age": 30 } ]"""
+
+        result = load_yaml(yaml_content)
+        # Should create consistent JSON string and hash it
+        assert len(result["MyStack"]["CRC"]) == 64  # SHA256 hex length
+
+    def test_file_checksum(self, tmp_path: Path) -> None:
+        """Test checksum of a file."""
+        # Create test file
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Test content")
+
+        # Create YAML file
+        main_file = tmp_path / "template.yaml"
+        main_content = f"""MyStack:
+  CRC: !CFNToolsCRC [ "file://test.txt" ]"""
+        main_file.write_text(main_content)
+
+        result = load_yaml_file(str(main_file))
+        # SHA256 of "Test content"
+        expected = "9d9595c5d94fb65b824f56e9999527dba9542481580d69feb89056aabaa0aa87"
+        assert result["MyStack"]["CRC"] == expected
+
+    def test_md5_algorithm(self) -> None:
+        """Test checksum with MD5 algorithm."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "Hello, World!", { Algorithm: md5 } ]"""
+
+        result = load_yaml(yaml_content)
+        # MD5 of "Hello, World!" in hex
+        expected = "65a8e27d8879283831b664bd8b7f0ad4"
+        assert result["MyStack"]["CRC"] == expected
+
+    def test_base64_encoding(self) -> None:
+        """Test checksum with base64 encoding."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "Hello, World!", { Encoding: base64 } ]"""
+
+        result = load_yaml(yaml_content)
+        # SHA256 of "Hello, World!" in base64
+        expected = "3/1gIbsr1bCvZ2KQgJ7DpTGR3YHH9wpLKGiKNiGCmG8="
+        assert result["MyStack"]["CRC"] == expected
+
+    def test_sha1_algorithm(self) -> None:
+        """Test checksum with SHA1 algorithm."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "Test", { Algorithm: sha1 } ]"""
+
+        result = load_yaml(yaml_content)
+        # SHA1 of "Test" in hex
+        expected = "640ab2bae07bedc4c163f679a746f7ab7fb5d1fa"
+        assert result["MyStack"]["CRC"] == expected
+
+    def test_sha512_algorithm(self) -> None:
+        """Test checksum with SHA512 algorithm."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "Test", { Algorithm: sha512 } ]"""
+
+        result = load_yaml(yaml_content)
+        # SHA512 produces 128 character hex string
+        assert len(result["MyStack"]["CRC"]) == 128
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        """Test error when file not found."""
+        main_file = tmp_path / "template.yaml"
+        main_content = """MyStack:
+  CRC: !CFNToolsCRC [ "file://nonexistent.txt" ]"""
+        main_file.write_text(main_content)
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="file not found"):
+            load_yaml_file(str(main_file))
+
+    def test_invalid_algorithm(self) -> None:
+        """Test error with invalid algorithm."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "test", { Algorithm: sha384 } ]"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="Algorithm must be one of"):
+            load_yaml(yaml_content)
+
+    def test_invalid_encoding(self) -> None:
+        """Test error with invalid encoding."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ "test", { Encoding: base32 } ]"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match='Encoding must be "hex" or "base64"'):
+            load_yaml(yaml_content)
+
+    def test_invalid_node_type(self) -> None:
+        """Test error when tag is used with non-sequence node."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC "not a sequence" """
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="expected a sequence node"):
+            load_yaml(yaml_content)
+
+    def test_empty_sequence(self) -> None:
+        """Test error when sequence is empty."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC []"""
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="requires at least one parameter"):
+            load_yaml(yaml_content)
+
+    def test_number_checksum(self) -> None:
+        """Test checksum of a number."""
+        yaml_content = """MyStack:
+  CRC: !CFNToolsCRC [ 42 ]"""
+
+        result = load_yaml(yaml_content)
+        # SHA256 of "42"
+        expected = "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049"
+        assert result["MyStack"]["CRC"] == expected
