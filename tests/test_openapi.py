@@ -4,7 +4,7 @@ import json
 import pytest
 import yaml
 
-from cfn_tools.openapi import (
+from aws_sam_tools.openapi import (
     SafeNavigationDict,
     RuleContext,
     Rule,

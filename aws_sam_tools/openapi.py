@@ -19,7 +19,7 @@ Rules follow the format: "node_type : action : filter_expression"
 - filter_expression: Python expression to evaluate for matching
 
 Example:
-    >>> from cfn_tools.openapi import process_openapi
+    >>> from aws_sam_tools.openapi import process_openapi
     >>> rules = ["path/method : delete : resource.security == 'none'"]
     >>> result = process_openapi(openapi_content, rules)
     >>> # Operations without security are removed

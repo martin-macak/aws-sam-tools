@@ -26,7 +26,7 @@ Supported CloudFormation Tags:
 - Condition functions: !And, !Equals, !If, !Not, !Or, !Condition
 
 Example:
-    >>> from cfn_tools.cfn_yaml import load_yaml_file
+    >>> from aws_sam_tools.cfn_yaml import load_yaml_file
     >>> template = load_yaml_file('template.yaml')
     >>> print(template['Resources']['MyBucket']['Properties']['BucketName'])
     RefTag('MyBucketName')
@@ -430,11 +430,11 @@ class CloudFormationLoader(yaml.SafeLoader):
 
     Example:
         >>> import yaml
-        >>> from cfn_tools.cfn_yaml import CloudFormationLoader
+        >>> from aws_sam_tools.cfn_yaml import CloudFormationLoader
         >>> yaml_content = "BucketName: !Ref MyBucket"
         >>> result = yaml.load(yaml_content, Loader=CloudFormationLoader)
         >>> print(type(result['BucketName']))
-        <class 'cfn_tools.cfn_yaml.RefTag'>
+        <class 'aws_sam_tools.cfn_yaml.RefTag'>
     """
 
     pass

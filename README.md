@@ -1,15 +1,15 @@
-# CloudFormation Tools (cfn-tools)
+# AWS SAM Tools
 
-[![CI](https://github.com/martin-macak/cfn-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/martin-macak/cfn-tools/actions/workflows/ci.yml)
-[![Test Build](https://github.com/martin-macak/cfn-tools/actions/workflows/test-build.yml/badge.svg)](https://github.com/martin-macak/cfn-tools/actions/workflows/test-build.yml)
-[![PyPI version](https://badge.fury.io/py/cfn-tools.svg)](https://badge.fury.io/py/cfn-tools)
+[![CI](https://github.com/martin-macak/aws-sam-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/martin-macak/aws-sam-tools/actions/workflows/ci.yml)
+[![Test Build](https://github.com/martin-macak/aws-sam-tools/actions/workflows/test-build.yml/badge.svg)](https://github.com/martin-macak/aws-sam-tools/actions/workflows/test-build.yml)
+[![PyPI version](https://badge.fury.io/py/aws-sam-tools.svg)](https://badge.fury.io/py/aws-sam-tools)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 
 A comprehensive Python package for processing AWS CloudFormation templates with advanced YAML parsing capabilities and extended processing features.
 
 ## Overview
 
-cfn-tools provides utilities for working with AWS CloudFormation templates, including a custom YAML parser that properly handles CloudFormation-specific intrinsic function tags (like `!Ref`, `!GetAtt`, `!Sub`) which standard YAML parsers cannot handle correctly. The package also includes extended processing capabilities for advanced template manipulation and an OpenAPI specification processor.
+aws-sam-tools provides utilities for working with AWS CloudFormation templates, including a custom YAML parser that properly handles CloudFormation-specific intrinsic function tags (like `!Ref`, `!GetAtt`, `!Sub`) which standard YAML parsers cannot handle correctly. The package also includes extended processing capabilities for advanced template manipulation and an OpenAPI specification processor.
 
 ## Key Features
 
@@ -62,13 +62,13 @@ Plus all condition functions: `!And`, `!Equals`, `!If`, `!Not`, `!Or`, `!Conditi
 ## Installation
 
 ```bash
-pip install cfn-tools
+pip install aws-sam-tools
 ```
 
 For development:
 ```bash
-git clone https://github.com/yourusername/cfn-tools.git
-cd cfn-tools
+git clone https://github.com/yourusername/aws-sam-tools.git
+cd aws-sam-tools
 make init
 ```
 
@@ -77,14 +77,14 @@ make init
 ### Basic CloudFormation Template Processing
 
 ```python
-from cfn_tools.cfn_yaml import load_yaml_file
+from aws_sam_tools.cfn_yaml import load_yaml_file
 
 # Load a CloudFormation template
 template = load_yaml_file('template.yaml')
 
 # Access CloudFormation tags as objects
 bucket_name = template['Resources']['MyBucket']['Properties']['BucketName']
-print(type(bucket_name))  # <class 'cfn_tools.cfn_yaml.RefTag'>
+print(type(bucket_name))  # <class 'aws_sam_tools.cfn_yaml.RefTag'>
 print(bucket_name.value)  # 'MyBucketParameter'
 ```
 
@@ -110,7 +110,7 @@ Resources:
 ```
 
 ```python
-from cfn_tools.cfn_processing import load_yaml_file
+from aws_sam_tools.cfn_processing import load_yaml_file
 
 # Process template with CFNTools tags
 template = load_yaml_file('template.yaml')
@@ -125,7 +125,7 @@ template = load_yaml_file('template.yaml')
 ### Convert to AWS-Compatible Format
 
 ```python
-from cfn_tools.cfn_processing import load_yaml_file
+from aws_sam_tools.cfn_processing import load_yaml_file
 import yaml
 
 # Load and convert CloudFormation tags to intrinsic functions
@@ -143,22 +143,22 @@ print(aws_yaml)
 Process CloudFormation templates:
 ```bash
 # Process CFNTools tags and convert CloudFormation tags to intrinsic functions
-cfn-tools template process --template template.yaml --output processed.yaml --replace-tags
+aws-sam-tools template process --template template.yaml --output processed.yaml --replace-tags
 
 # Process without converting CloudFormation tags
-cfn-tools template process --template template.yaml --output processed.yaml
+aws-sam-tools template process --template template.yaml --output processed.yaml
 ```
 
 Process OpenAPI specifications:
 ```bash
 # Remove operations without security requirements
-cfn-tools openapi process \
+aws-sam-tools openapi process \
   --rule "path/method : delete : resource.security == 'none'" \
   --input api.yaml \
   --output filtered-api.yaml
 
 # Multiple rules
-cfn-tools openapi process \
+aws-sam-tools openapi process \
   --rule "path/method : delete : resource.security == 'none'" \
   --rule "path/method : delete : method == 'options'" \
   --input api.yaml
@@ -267,7 +267,7 @@ Parameters:
 Process OpenAPI specifications with rule-based transformations:
 
 ```python
-from cfn_tools.openapi import process_openapi
+from aws_sam_tools.openapi import process_openapi
 
 # Remove all operations without security
 rules = ["path/method : delete : resource.security == 'none'"]
@@ -294,7 +294,7 @@ result = process_openapi(openapi_content, rules)
 ```bash
 # Clone repository
 git clone <repository-url>
-cd cfn-tools
+cd aws-sam-tools
 
 # Initialize development environment
 make init
@@ -363,5 +363,5 @@ See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
 ## Support
 
 - 📖 [Documentation](docs/)
-- 🐛 [Issue Tracker](https://github.com/martin-macak/cfn-tools/issues)
-- 💬 [Discussions](https://github.com/martin-macak/cfn-tools/discussions)
+- 🐛 [Issue Tracker](https://github.com/martin-macak/aws-sam-tools/issues)
+- 💬 [Discussions](https://github.com/martin-macak/aws-sam-tools/discussions)

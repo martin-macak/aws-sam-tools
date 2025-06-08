@@ -17,7 +17,7 @@ The module also provides functionality to replace CloudFormation tags with
 their intrinsic function equivalents for compatibility with standard AWS tools.
 
 Example:
-    >>> from cfn_tools.cfn_processing import load_yaml_file
+    >>> from aws_sam_tools.cfn_processing import load_yaml_file
     >>> template = load_yaml_file('template.yaml', replace_tags=True)
     >>> # CFNTools tags are processed, CloudFormation tags converted to intrinsic functions
 """
@@ -42,7 +42,7 @@ except ImportError:
     Version = None
     get_version = None
 
-from cfn_tools.cfn_yaml import (
+from aws_sam_tools.cfn_yaml import (
     CloudFormationLoader,
     CloudFormationTag,
     get_node_type_name,

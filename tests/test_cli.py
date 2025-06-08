@@ -6,7 +6,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from cfn_tools.cli import cli
+from aws_sam_tools.cli import cli
 
 
 class TestCLI:
@@ -141,7 +141,7 @@ Resources:
         result = runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
-        assert "CloudFormation Tools" in result.output
+        assert "AWS SAM Tools" in result.output
         assert "Process CloudFormation templates" in result.output
 
     def test_template_help(self) -> None:

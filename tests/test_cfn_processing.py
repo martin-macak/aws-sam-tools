@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from cfn_tools.cfn_processing import (
+from aws_sam_tools.cfn_processing import (
     load_yaml,
     load_yaml_file,
     replace_cloudformation_tags,
@@ -456,7 +456,7 @@ class TestCFNToolsVersion:
         def mock_get_version(source):
             return mock_version
 
-        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.get_version", mock_get_version)
 
         yaml_content = """MyStack:
   Version: !CFNToolsVersion"""
@@ -476,7 +476,7 @@ class TestCFNToolsVersion:
         def mock_get_version(source):
             return mock_version
 
-        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.get_version", mock_get_version)
 
         yaml_content = """MyStack:
   Version: !CFNToolsVersion { Style: pep440 }"""
@@ -493,7 +493,7 @@ class TestCFNToolsVersion:
         mock_version.serialize.return_value = "2.0.0"
 
         mock_get_version = Mock(return_value=mock_version)
-        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.get_version", mock_get_version)
 
         yaml_content = """MyStack:
   Version: !CFNToolsVersion { Source: Any }"""
@@ -504,7 +504,7 @@ class TestCFNToolsVersion:
 
     def test_version_fallback_no_dunamai(self, monkeypatch) -> None:
         """Test fallback when dunamai is not available."""
-        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", None)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.get_version", None)
 
         yaml_content = """MyStack:
   Version: !CFNToolsVersion"""
@@ -518,7 +518,7 @@ class TestCFNToolsVersion:
         def mock_get_version(source):
             raise Exception("Git not found")
 
-        monkeypatch.setattr("cfn_tools.cfn_processing.get_version", mock_get_version)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.get_version", mock_get_version)
 
         yaml_content = """MyStack:
   Version: !CFNToolsVersion"""
@@ -592,7 +592,7 @@ class TestCFNToolsTimestamp:
             def now(tz):
                 return fixed_time
 
-        monkeypatch.setattr("cfn_tools.cfn_processing.datetime", MockDatetime)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.datetime", MockDatetime)
 
         yaml_content = """MyStack:
   Timestamp: !CFNToolsTimestamp { Offset: 1, OffsetUnit: minutes }"""
@@ -611,7 +611,7 @@ class TestCFNToolsTimestamp:
             def now(tz):
                 return fixed_time
 
-        monkeypatch.setattr("cfn_tools.cfn_processing.datetime", MockDatetime)
+        monkeypatch.setattr("aws_sam_tools.cfn_processing.datetime", MockDatetime)
 
         # Test hours offset
         yaml_content = """MyStack:

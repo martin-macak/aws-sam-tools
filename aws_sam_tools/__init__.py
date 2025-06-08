@@ -1,7 +1,7 @@
 """
-CloudFormation Tools - A Python package for processing AWS CloudFormation templates.
+AWS SAM Tools - A Python package for processing AWS CloudFormation and SAM templates.
 
-This package provides utilities for working with AWS CloudFormation templates,
+This package provides utilities for working with AWS CloudFormation and SAM templates,
 including a custom YAML parser that properly handles CloudFormation-specific
 intrinsic function tags (like !Ref, !GetAtt, !Sub) and additional processing
 capabilities for template manipulation.
@@ -19,7 +19,7 @@ Main Modules:
     openapi: OpenAPI specification processing
 
 Example:
-    >>> from cfn_tools import cfn_yaml
+    >>> from aws_sam_tools import cfn_yaml
     >>> template = cfn_yaml.load_yaml_file('template.yaml')
     >>> print(template)
 """

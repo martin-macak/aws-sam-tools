@@ -1,6 +1,6 @@
-"""Command line interface for cfn-tools.
+"""Command line interface for aws-sam-tools.
 
-This module provides the command-line interface for cfn-tools, enabling users
+This module provides the command-line interface for aws-sam-tools, enabling users
 to process CloudFormation templates and OpenAPI specifications from the command line.
 
 Commands:
@@ -8,11 +8,11 @@ Commands:
 - openapi process: Process OpenAPI specifications with rule-based transformations
 
 The CLI supports various output formats and processing options, making it easy
-to integrate cfn-tools into build pipelines and automation workflows.
+to integrate aws-sam-tools into build pipelines and automation workflows.
 
 Example usage:
-    $ cfn-tools template process --template template.yaml --output processed.yaml --replace-tags
-    $ cfn-tools openapi process --rule "path/method : delete : resource.security == 'none'"
+    $ aws-sam-tools template process --template template.yaml --output processed.yaml --replace-tags
+    $ aws-sam-tools openapi process --rule "path/method : delete : resource.security == 'none'"
 """
 
 import sys
@@ -21,14 +21,14 @@ from pathlib import Path
 import click
 import yaml
 
-from cfn_tools.cfn_processing import load_yaml_file
-from cfn_tools.openapi import OutputFormat, process_openapi as process_openapi_spec
+from aws_sam_tools.cfn_processing import load_yaml_file
+from aws_sam_tools.openapi import OutputFormat, process_openapi as process_openapi_spec
 
 
-@click.version_option(prog_name="cfn-tools")
+@click.version_option(prog_name="aws-sam-tools")
 @click.group()
 def cli() -> None:
-    """CloudFormation Tools - Process CloudFormation templates with custom tags."""
+    """AWS SAM Tools - Process CloudFormation templates with custom tags."""
     pass
 
 

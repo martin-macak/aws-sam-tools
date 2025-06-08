@@ -3,10 +3,10 @@ requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-cfn-tools = "cfn_tools.cli:cli"
+aws-sam-tools = "aws_sam_tools.cli:cli"
 
 [project]
-name = "cfn-tools"
+name = "aws-sam-tools"
 # version = "0.1.0"
 dynamic = ["version"]
 description = ""
@@ -36,13 +36,13 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/martin-macak/cfn-tools"
-Repository = "https://github.com/martin-macak/cfn-tools"
-"Bug Tracker" = "https://github.com/martin-macak/cfn-tools/issues"
-Documentation = "https://github.com/martin-macak/cfn-tools#readme"
+Homepage = "https://github.com/martin-macak/aws-sam-tools"
+Repository = "https://github.com/martin-macak/aws-sam-tools"
+"Bug Tracker" = "https://github.com/martin-macak/aws-sam-tools/issues"
+Documentation = "https://github.com/martin-macak/aws-sam-tools#readme"
 
 [tool.hatch.build.targets.wheel]
-packages = ["cfn_tools"]
+packages = ["aws_sam_tools"]
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
@@ -62,7 +62,7 @@ dev-dependencies = [
 ]
 
 [tool.pyright]
-include = ["cfn_tools"]
+include = ["aws_sam_tools"]
 venvPath = "."
 venv = ".venv"
 

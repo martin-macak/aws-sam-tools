@@ -8,7 +8,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from cfn_tools.cli import cli
+from aws_sam_tools.cli import cli
 
 
 class TestOpenAPICLI:

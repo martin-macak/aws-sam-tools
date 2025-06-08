@@ -67,13 +67,13 @@ jobs:
         echo "## Installation" >> release_notes.md
         echo "" >> release_notes.md
         echo "\`\`\`bash" >> release_notes.md
-        echo "pip install cfn-tools==$TAG" >> release_notes.md
+        echo "pip install aws-sam-tools==$TAG" >> release_notes.md
         echo "\`\`\`" >> release_notes.md
         echo "" >> release_notes.md
         echo "## Links" >> release_notes.md
         echo "" >> release_notes.md
-        echo "* [PyPI Package](https://pypi.org/project/cfn-tools/$TAG/)" >> release_notes.md
-        echo "* [Documentation](https://github.com/martin-macak/cfn-tools#readme)" >> release_notes.md
+        echo "* [PyPI Package](https://pypi.org/project/aws-sam-tools/$TAG/)" >> release_notes.md
+        echo "* [Documentation](https://github.com/martin-macak/aws-sam-tools#readme)" >> release_notes.md
         
         # Set the tag name for later use
         echo "tag=$TAG" >> $GITHUB_OUTPUT

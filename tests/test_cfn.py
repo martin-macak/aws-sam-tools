@@ -1,5 +1,5 @@
 import pytest
-from cfn_tools.cfn_yaml import (
+from aws_sam_tools.cfn_yaml import (
     load_yaml,
     RefTag,
     GetAttTag,
