@@ -77,9 +77,9 @@ class SafeNavigationDict:
 
     def __ne__(self, other: Any) -> bool:
         """Inequality comparison."""
-        # Handle None case specially for != comparison
+        # Standard Python semantics: None != non-None should be True
         if self._data is None:
-            return False
+            return other is not None
         return not self.__eq__(other)
 
     def __contains__(self, item: Any) -> bool:
