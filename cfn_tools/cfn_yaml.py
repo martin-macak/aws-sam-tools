@@ -1,3 +1,37 @@
+"""Core YAML parsing module with CloudFormation intrinsic function support.
+
+This module provides a custom YAML loader that can parse CloudFormation templates
+with their intrinsic function tags (like !Ref, !GetAtt, !Sub) which standard
+YAML parsers cannot handle properly.
+
+The module includes:
+- CloudFormationTag base class and specific tag implementations
+- Constructor functions for each CloudFormation intrinsic function
+- CloudFormationLoader - custom YAML loader
+- Main API functions for loading YAML files and strings
+
+Supported CloudFormation Tags:
+- !Ref: Reference to parameters, resources, or pseudo parameters
+- !GetAtt: Get attribute from a resource
+- !Sub: String substitution with variables
+- !Join: Join values with a delimiter
+- !Split: Split a string into an array
+- !Select: Select an element from an array
+- !FindInMap: Find value in a mapping
+- !Base64: Base64 encode a value
+- !Cidr: Generate CIDR blocks
+- !ImportValue: Import value from another stack
+- !GetAZs: Get availability zones
+- !Transform: Apply transforms
+- Condition functions: !And, !Equals, !If, !Not, !Or, !Condition
+
+Example:
+    >>> from cfn_tools.cfn_yaml import load_yaml_file
+    >>> template = load_yaml_file('template.yaml')
+    >>> print(template['Resources']['MyBucket']['Properties']['BucketName'])
+    RefTag('MyBucketName')
+"""
+
 import yaml
 from typing import Any, Dict, Optional, List, Union
 
@@ -15,7 +49,19 @@ def get_node_type_name(node: yaml.Node) -> str:
 
 
 class CloudFormationTag:
-    """Base class for CloudFormation tags."""
+    """Base class for all CloudFormation intrinsic function tags.
+
+    This class provides the common interface for all CloudFormation tag types.
+    Each tag preserves the original CloudFormation syntax when loaded from YAML.
+
+    Attributes:
+        value: The value contained within the tag
+
+    Example:
+        >>> tag = RefTag('MyParameter')
+        >>> print(tag.value)
+        'MyParameter'
+    """
 
     def __init__(self, value: Any):
         self.value = value
@@ -30,19 +76,66 @@ class CloudFormationTag:
 
 
 class RefTag(CloudFormationTag):
-    """Represents !Ref tag."""
+    """Represents the !Ref CloudFormation intrinsic function.
+
+    The !Ref intrinsic function returns the value of the specified parameter
+    or resource. When you specify a parameter's logical name, it returns the
+    value of the parameter. When you specify a resource's logical name, it
+    typically returns a value that you can typically use to refer to that resource.
+
+    Example YAML:
+        BucketName: !Ref MyBucket
+
+    Example:
+        >>> ref = RefTag('MyBucket')
+        >>> print(ref.value)
+        'MyBucket'
+    """
 
     pass
 
 
 class GetAttTag(CloudFormationTag):
-    """Represents !GetAtt tag."""
+    """Represents the !GetAtt CloudFormation intrinsic function.
+
+    The !GetAtt intrinsic function returns the value of an attribute from a
+    resource in the template. The value can be either a list [LogicalName, AttributeName]
+    or a string "LogicalName.AttributeName".
+
+    Example YAML:
+        DomainName: !GetAtt MyBucket.DomainName
+        # or
+        DomainName: !GetAtt [MyBucket, DomainName]
+
+    Example:
+        >>> getatt = GetAttTag(['MyBucket', 'DomainName'])
+        >>> print(getatt.value)
+        ['MyBucket', 'DomainName']
+    """
 
     pass
 
 
 class SubTag(CloudFormationTag):
-    """Represents !Sub tag."""
+    """Represents the !Sub CloudFormation intrinsic function.
+
+    The !Sub intrinsic function substitutes variables in an input string with
+    values that you specify. The value can be either a string or a list containing
+    the string and a mapping of variables.
+
+    Example YAML:
+        Description: !Sub 'Stack ${AWS::StackName} in ${AWS::Region}'
+        # or
+        Description: !Sub
+          - 'Instance ${Instance} in ${Region}'
+          - Instance: !Ref MyInstance
+            Region: !Ref 'AWS::Region'
+
+    Example:
+        >>> sub = SubTag(['Hello ${Name}', {'Name': 'World'}])
+        >>> print(sub.value)
+        ['Hello ${Name}', {'Name': 'World'}]
+    """
 
     pass
 
@@ -325,7 +418,24 @@ def construct_condition(loader: yaml.Loader, node: yaml.Node) -> ConditionTag:
 
 
 class CloudFormationLoader(yaml.SafeLoader):
-    """Custom YAML loader that supports CloudFormation tags."""
+    """Custom YAML loader that supports CloudFormation intrinsic function tags.
+
+    This loader extends PyYAML's SafeLoader to handle CloudFormation-specific
+    tags that are not supported by standard YAML parsers. It registers constructors
+    for all CloudFormation intrinsic functions and validates their syntax according
+    to AWS CloudFormation specifications.
+
+    The loader preserves the original CloudFormation syntax by creating tag objects
+    instead of immediately evaluating the intrinsic functions.
+
+    Example:
+        >>> import yaml
+        >>> from cfn_tools.cfn_yaml import CloudFormationLoader
+        >>> yaml_content = "BucketName: !Ref MyBucket"
+        >>> result = yaml.load(yaml_content, Loader=CloudFormationLoader)
+        >>> print(type(result['BucketName']))
+        <class 'cfn_tools.cfn_yaml.RefTag'>
+    """
 
     pass
 

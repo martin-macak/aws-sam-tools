@@ -1,3 +1,27 @@
+"""Extended CloudFormation template processing with CFNTools tags.
+
+This module extends the core cfn_yaml functionality with additional processing
+tags that enable advanced template manipulation capabilities. It includes tags
+for file inclusion, string conversion, UUID generation, version stamping,
+timestamp generation, and checksum calculation.
+
+CFNTools Processing Tags:
+- !CFNToolsIncludeFile: Include content from external files
+- !CFNToolsToString: Convert values to JSON/YAML strings
+- !CFNToolsUUID: Generate unique identifiers
+- !CFNToolsVersion: Include version information from git
+- !CFNToolsTimestamp: Generate timestamps with formatting options
+- !CFNToolsCRC: Calculate checksums of values or files
+
+The module also provides functionality to replace CloudFormation tags with
+their intrinsic function equivalents for compatibility with standard AWS tools.
+
+Example:
+    >>> from cfn_tools.cfn_processing import load_yaml_file
+    >>> template = load_yaml_file('template.yaml', replace_tags=True)
+    >>> # CFNTools tags are processed, CloudFormation tags converted to intrinsic functions
+"""
+
 import base64
 import hashlib
 import json

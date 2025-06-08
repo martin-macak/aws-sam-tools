@@ -1,4 +1,29 @@
-"""OpenAPI specification processing module."""
+"""OpenAPI specification processing module.
+
+This module provides functionality for processing OpenAPI specifications with
+rule-based transformations. It supports filtering and modifying OpenAPI specs
+based on flexible rule expressions that can evaluate various properties of
+API operations.
+
+Key Features:
+- Rule-based processing with flexible filter expressions
+- Support for path/method operations
+- Safe evaluation environment for filter expressions
+- JSON and YAML format support
+- Multiple action types (currently delete operations)
+
+Rule Format:
+Rules follow the format: "node_type : action : filter_expression"
+- node_type: Type of node to process (e.g., "path/method")
+- action: Action to perform (e.g., "delete")
+- filter_expression: Python expression to evaluate for matching
+
+Example:
+    >>> from cfn_tools.openapi import process_openapi
+    >>> rules = ["path/method : delete : resource.security == 'none'"]
+    >>> result = process_openapi(openapi_content, rules)
+    >>> # Operations without security are removed
+"""
 
 import json
 import yaml
@@ -9,7 +34,13 @@ import copy
 
 
 class OutputFormat(Enum):
-    """Supported output formats."""
+    """Supported output formats for OpenAPI specifications.
+
+    Attributes:
+        JSON: Output in JSON format
+        YAML: Output in YAML format
+        DEFAULT: Use the same format as input
+    """
 
     JSON = "json"
     YAML = "yaml"
@@ -29,7 +60,23 @@ class Action(Enum):
 
 
 class SafeNavigationDict:
-    """Dictionary wrapper that supports safe dot notation navigation."""
+    """Dictionary wrapper that supports safe dot notation navigation.
+
+    This class provides safe access to nested dictionary and list structures
+    without raising KeyError or IndexError exceptions. Missing keys or indices
+    return SafeNavigationDict(None) instead of raising exceptions.
+
+    This is particularly useful for rule evaluation where we want to check
+    for the existence of nested properties without complex error handling.
+
+    Example:
+        >>> data = {'resource': {'security': [{'api_key': []}]}}
+        >>> nav = SafeNavigationDict(data)
+        >>> print(nav.resource.security == 'api_key')  # Safe check
+        True
+        >>> print(nav.missing.property)  # No exception
+        SafeNavigationDict(None)
+    """
 
     def __init__(self, data: Any):
         self._data = data
@@ -103,7 +150,17 @@ class SafeNavigationDict:
 
 
 class RuleContext:
-    """Context for safe rule evaluation."""
+    """Context for safe rule evaluation.
+
+    Provides the evaluation context for rules, including the resource being
+    evaluated and metadata like path and method. All properties are wrapped
+    in SafeNavigationDict for safe access.
+
+    Attributes:
+        resource: The resource being evaluated (e.g., OpenAPI operation)
+        path: The API path being evaluated
+        method: The HTTP method being evaluated
+    """
 
     def __init__(self, resource: Any, path: Optional[str] = None, method: Optional[str] = None):
         """Initialize rule context.
@@ -123,7 +180,20 @@ class RuleContext:
 
 
 class Rule:
-    """Represents a processing rule."""
+    """Represents a processing rule for OpenAPI specifications.
+
+    Rules define how to identify and process specific elements in OpenAPI
+    specifications. They consist of a node type, action, and filter expression.
+
+    Attributes:
+        node_type: Type of node to process (NodeType enum)
+        action: Action to perform (Action enum)
+        filter_expression: Python expression string for matching
+
+    Example:
+        >>> rule = Rule("path/method : delete : resource.security == 'none'")
+        >>> # Rule will delete operations that have no security requirements
+    """
 
     def __init__(self, rule_string: str):
         """Parse rule from string format.
@@ -287,14 +357,27 @@ def apply_rules(spec: Dict[str, Any], rules: List[Rule]) -> Dict[str, Any]:
 def process_openapi(input_content: str, rules: List[str], input_format: Optional[OutputFormat] = None, output_format: Optional[OutputFormat] = None) -> str:
     """Process OpenAPI specification with given rules.
 
+    This is the main entry point for processing OpenAPI specifications.
+    It parses the input, applies the specified rules, and returns the
+    processed specification in the desired format.
+
     Args:
-        input_content: The input specification content
-        rules: List of rule strings
-        input_format: Input format hint
-        output_format: Desired output format
+        input_content: The input specification content as string
+        rules: List of rule strings in "node_type : action : filter" format
+        input_format: Input format hint (auto-detected if None)
+        output_format: Desired output format (defaults to input format)
 
     Returns:
         Processed specification as string
+
+    Raises:
+        ValueError: If input cannot be parsed or rules are invalid
+
+    Example:
+        >>> openapi_spec = '''...(OpenAPI content)...'''
+        >>> rules = ["path/method : delete : resource.security == 'none'"]
+        >>> result = process_openapi(openapi_spec, rules)
+        >>> # Returns spec with unsecured operations removed
     """
     # Parse rules
     parsed_rules = [Rule(rule) for rule in rules]

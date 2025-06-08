@@ -32,29 +32,55 @@ uv run pytest tests/test_cfn.py::test_function_name -v
    - Main API: `load_yaml()` and `load_yaml_file()` functions
    - Each tag has a constructor function that validates the YAML node structure
 
-2. **Tag System**
-   - Each CloudFormation intrinsic function has its own tag class
-   - Tags preserve the CloudFormation syntax when loaded
-   - Constructor functions validate node types and content according to AWS specs
-   - Tags: !Ref, !GetAtt, !Sub, !Join, !Split, !Select, !FindInMap, !Base64, !Cidr, !ImportValue, !GetAZs
+2. **cfn_tools/cfn_processing.py** - Extended processing capabilities
+   - `CloudFormationProcessingLoader`: Extends CloudFormationLoader with CFNTools tags
+   - CFNTools processing tags: !CFNToolsIncludeFile, !CFNToolsToString, !CFNToolsUUID, !CFNToolsVersion, !CFNToolsTimestamp, !CFNToolsCRC
+   - `replace_cloudformation_tags()`: Converts tag objects to AWS intrinsic function format
+   - Enhanced `load_yaml()` and `load_yaml_file()` with processing support
+
+3. **cfn_tools/cli.py** - Command line interface
+   - `template process`: Process CloudFormation templates with CFNTools tags
+   - `openapi process`: Process OpenAPI specifications with rule-based transformations
+   - Support for --replace-tags option to convert CloudFormation tags to intrinsic functions
+
+4. **cfn_tools/openapi.py** - OpenAPI specification processing
+   - Rule-based processing with format "node_type : action : filter_expression"
+   - `SafeNavigationDict`: Safe property access for rule evaluation
+   - Support for path/method filtering and delete operations
+
+### Tag System Architecture
+
+- **Base Class**: `CloudFormationTag` provides common interface for all tags
+- **Tag Preservation**: Tags maintain original CloudFormation syntax as objects
+- **Validation**: Constructor functions validate YAML node structure per AWS specs
+- **Two-Layer System**: 
+  - Core CloudFormation tags (cfn_yaml.py) - preserve AWS syntax
+  - Extended CFNTools tags (cfn_processing.py) - processed immediately during loading
 
 ### Testing Strategy
 
-- Comprehensive test coverage in `tests/test_cfn.py`
-- Test both valid and invalid YAML scenarios
-- Test nested tags and edge cases
-- When adding new features, add corresponding tests
+- Modular test structure with dedicated files:
+  - `test_cfn.py`: Core CloudFormation tag parsing
+  - `test_cfn_processing.py`: Extended processing functionality  
+  - `test_cfn_processing_tags.py`: CFNTools tag behavior
+  - `test_cli.py`: CLI template processing
+  - `test_cli_openapi.py`: CLI OpenAPI processing
+  - `test_openapi.py`: OpenAPI rule engine
+- Test both valid and invalid scenarios with comprehensive error checking
+- CLI tests use filesystem fixtures and output validation
 
 ### Build System
 
 - Uses `uv` as package manager (modern Python packaging)
 - Python 3.13+ required
-- Dynamic versioning from git tags
+- Dynamic versioning from git tags using dunamai
+- CLI entry point: `cfn-tools = "cfn_tools.cli:cli"`
 - Configured for PyPI distribution
 
 ## Important Notes
 
-- The CLI entry point (`cfn_tools.cli:cli`) is configured but the CLI module doesn't exist yet
 - When modifying tag parsing, ensure error messages include YAML position info for debugging
 - All CloudFormation tag constructors should validate input according to AWS documentation
 - Use Ruff for formatting (200 char line length configured)
+- CFNTools tags are processed during YAML loading, CloudFormation tags preserved as objects
+- The `replace_tags=True` option converts CloudFormation tag objects to AWS-compatible intrinsic functions

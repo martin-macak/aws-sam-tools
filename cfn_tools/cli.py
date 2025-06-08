@@ -1,4 +1,19 @@
-"""Command line interface for cfn-tools."""
+"""Command line interface for cfn-tools.
+
+This module provides the command-line interface for cfn-tools, enabling users
+to process CloudFormation templates and OpenAPI specifications from the command line.
+
+Commands:
+- template process: Process CloudFormation templates with CFNTools tags
+- openapi process: Process OpenAPI specifications with rule-based transformations
+
+The CLI supports various output formats and processing options, making it easy
+to integrate cfn-tools into build pipelines and automation workflows.
+
+Example usage:
+    $ cfn-tools template process --template template.yaml --output processed.yaml --replace-tags
+    $ cfn-tools openapi process --rule "path/method : delete : resource.security == 'none'"
+"""
 
 import sys
 from pathlib import Path
