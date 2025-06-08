@@ -10,6 +10,7 @@ from cfn_tools.cfn_processing import load_yaml_file
 from cfn_tools.openapi import OutputFormat, process_openapi as process_openapi_spec
 
 
+@click.version_option(prog_name="cfn-tools")
 @click.group()
 def cli() -> None:
     """CloudFormation Tools - Process CloudFormation templates with custom tags."""

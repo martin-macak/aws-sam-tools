@@ -4,7 +4,7 @@ all: init build
 
 # Initialize development environment
 init:
-	rm -rf .venv/lib/python3.13/site-packages/cfn-tools-*
+	rm -rf .venv/lib/python3.13/site-packages/cfn_tools-*
 	uv sync --dev --no-cache
 
 # Build the package
