@@ -7,7 +7,7 @@ import yaml
 from aws_sam_tools.cfn_processing import (
     load_yaml,
     load_yaml_file,
-    replace_cloudformation_tags,
+    process_yaml_template,
 )
 
 
@@ -26,7 +26,7 @@ info:
 
         # Create main YAML file
         main_file = tmp_path / "template.yaml"
-        main_content = f"""MyStack:
+        main_content = """MyStack:
   Def: !CFNToolsIncludeFile openapi.yaml"""
         main_file.write_text(main_content)
 
@@ -54,7 +54,7 @@ info:
 
         # Create main YAML file
         main_file = tmp_path / "template.yaml"
-        main_content = f"""MyStack:
+        main_content = """MyStack:
   Def: !CFNToolsIncludeFile openapi.json"""
         main_file.write_text(main_content)
 
@@ -79,7 +79,7 @@ info:
 
         # Create main YAML file
         main_file = tmp_path / "template.yaml"
-        main_content = f"""MyStack:
+        main_content = """MyStack:
   Def: !CFNToolsIncludeFile README.txt"""
         main_file.write_text(main_content)
 
@@ -104,7 +104,7 @@ info:
 
         # Create main YAML file
         main_file = tmp_path / "template.yaml"
-        main_content = f"""MyStack:
+        main_content = """MyStack:
   Def: !CFNToolsIncludeFile src/api/openapi.yaml"""
         main_file.write_text(main_content)
 
@@ -190,7 +190,7 @@ Properties:
 
         # Create main YAML file
         main_file = tmp_path / "template.yaml"
-        main_content = f"""Resources:
+        main_content = """Resources:
   S3Bucket: !CFNToolsIncludeFile resources.yaml"""
         main_file.write_text(main_content)
 
@@ -363,7 +363,7 @@ class TestIntegration:
 
         # Create main YAML file that includes and converts to string
         main_file = tmp_path / "template.yaml"
-        main_content = f"""Parameters:
+        main_content = """Parameters:
   ConfigData:
     Type: String
     Default: !CFNToolsToString
@@ -468,6 +468,7 @@ class TestCFNToolsVersion:
     def test_version_with_pep440_style(self, monkeypatch) -> None:
         """Test generating version with pep440 style."""
         from unittest.mock import Mock
+
         from dunamai import Style
 
         mock_version = Mock()
@@ -583,7 +584,7 @@ class TestCFNToolsTimestamp:
     def test_timestamp_with_offset(self, monkeypatch) -> None:
         """Test timestamp with offset."""
         # Mock datetime to have a fixed time
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
 
         fixed_time = datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
@@ -679,7 +680,7 @@ class TestCFNToolsCRC:
 
         # Create YAML file
         main_file = tmp_path / "template.yaml"
-        main_content = f"""MyStack:
+        main_content = """MyStack:
   CRC: !CFNToolsCRC [ "file://test.txt" ]"""
         main_file.write_text(main_content)
 
@@ -778,3 +779,201 @@ class TestCFNToolsCRC:
         # SHA256 of "42"
         expected = "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049"
         assert result["MyStack"]["CRC"] == expected
+
+
+class TestProcessYamlTemplate:
+    """Test cases for the process_yaml_template function."""
+
+    def test_process_yaml_template_cloudformation_tags_preserved(self, tmp_path: Path) -> None:
+        """Test that CloudFormation tags are preserved when replace_tags=False."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """AWSTemplateFormatVersion: '2010-09-09'
+Description: Test template with CloudFormation tags
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketNameParameter
+      Tags:
+        - Key: Environment
+          Value: !Sub '${Environment}-bucket'
+  MyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-function'
+      Role: !GetAtt MyRole.Arn
+      Code:
+        ZipFile: !Base64 |
+          def handler(event, context):
+              return {'statusCode': 200}
+Parameters:
+  BucketNameParameter:
+    Type: String
+    Default: my-test-bucket
+  Environment:
+    Type: String
+    Default: dev"""
+        template_file.write_text(template_content)
+
+        result = process_yaml_template(str(template_file), replace_tags=False)
+
+        # Verify CloudFormation tags are preserved in output
+        assert "!Ref BucketNameParameter" in result
+        assert "!Sub ${Environment}-bucket" in result
+        assert "!Sub ${AWS::StackName}-function" in result
+        assert "!GetAtt MyRole.Arn" in result
+        assert "!Base64" in result
+
+        # Verify the structure is maintained
+        assert "AWSTemplateFormatVersion: '2010-09-09'" in result
+        assert "Description: Test template with CloudFormation tags" in result
+        assert "Resources:" in result
+        assert "Parameters:" in result
+
+    def test_process_yaml_template_replace_tags_enabled(self, tmp_path: Path) -> None:
+        """Test that CloudFormation tags are converted to intrinsic functions when replace_tags=True."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketNameParameter
+      Description: !Sub 'Bucket for ${Environment}'
+      Arn: !GetAtt SomeResource.Arn
+      Values: !Join
+        - ','
+        - - value1
+          - value2"""
+        template_file.write_text(template_content)
+
+        result = process_yaml_template(str(template_file), replace_tags=True)
+
+        # CloudFormation tags should be converted to intrinsic functions
+        assert "Ref: BucketNameParameter" in result
+        assert "Fn::Sub: Bucket for ${Environment}" in result
+        assert "Fn::GetAtt:" in result
+        assert "- SomeResource" in result
+        assert "- Arn" in result
+        assert "Fn::Join:" in result
+
+        # Original tag syntax should not be present
+        assert "!Ref" not in result
+        assert "!Sub" not in result
+        assert "!GetAtt" not in result
+        assert "!Join" not in result
+
+    def test_process_yaml_template_with_cfntools_tags(self, tmp_path: Path) -> None:
+        """Test processing of CFNTools tags along with CloudFormation tags."""
+        # Create included file
+        include_file = tmp_path / "config.yaml"
+        include_content = """database:
+  host: localhost
+  port: 5432"""
+        include_file.write_text(include_content)
+
+        template_file = tmp_path / "template.yaml"
+        template_content = """Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketNameParameter
+      Config: !CFNToolsIncludeFile config.yaml
+      UUID: !CFNToolsUUID"""
+        template_file.write_text(template_content)
+
+        result = process_yaml_template(str(template_file), replace_tags=False)
+
+        # CloudFormation tags should be preserved
+        assert "!Ref BucketNameParameter" in result
+
+        # CFNTools tags should be processed (included file content should be present)
+        assert "database:" in result
+        assert "host: localhost" in result
+        assert "port: 5432" in result
+
+        # UUID should be generated (should be a string, not the tag)
+        assert "!CFNToolsUUID" not in result
+
+    def test_process_yaml_template_file_not_found(self) -> None:
+        """Test that FileNotFoundError is raised for non-existent files."""
+        with pytest.raises(FileNotFoundError, match="Template file not found"):
+            process_yaml_template("/nonexistent/path/template.yaml")
+
+    def test_process_yaml_template_invalid_yaml(self, tmp_path: Path) -> None:
+        """Test that YAMLError is raised for invalid YAML content."""
+        template_file = tmp_path / "invalid.yaml"
+        template_content = """
+        Resources:
+          MyBucket:
+            Type: AWS::S3::Bucket
+            Properties:
+              BucketName: !Ref
+        """  # Invalid YAML - !Ref without value
+        template_file.write_text(template_content)
+
+        with pytest.raises(Exception):  # Should raise some kind of parsing error
+            process_yaml_template(str(template_file))
+
+    def test_process_yaml_template_dump_kwargs(self, tmp_path: Path) -> None:
+        """Test that additional dump kwargs are passed through correctly."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """Resources:
+  ZBucket:
+    Type: AWS::S3::Bucket
+  ABucket:
+    Type: AWS::S3::Bucket"""
+        template_file.write_text(template_content)
+
+        # Test with sort_keys=True
+        result_sorted = process_yaml_template(str(template_file), sort_keys=True)
+        lines = result_sorted.strip().split("\n")
+        resource_lines = [line for line in lines if "Bucket:" in line]
+
+        # Should be sorted alphabetically
+        assert "ABucket:" in resource_lines[0]
+        assert "ZBucket:" in resource_lines[1]
+
+    def test_process_yaml_template_complex_nested_tags(self, tmp_path: Path) -> None:
+        """Test processing of complex nested CloudFormation tags."""
+        template_file = tmp_path / "template.yaml"
+        template_content = """Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - '${StackName}-${Suffix}'
+        - StackName: !Ref 'AWS::StackName'
+          Suffix: !Ref BucketSuffix
+      Tags:
+        - Key: Name
+          Value: !Join
+            - '-'
+            - - !Ref Environment
+              - bucket
+              - !Select
+                - 0
+                - !Split
+                  - '-'
+                  - !Ref 'AWS::StackName'"""
+        template_file.write_text(template_content)
+
+        result = process_yaml_template(str(template_file), replace_tags=False)
+
+        # Verify all nested tags are preserved
+        assert "!Sub" in result
+        assert "!Ref AWS::StackName" in result
+        assert "!Ref BucketSuffix" in result
+        assert "!Join" in result
+        assert "!Select" in result
+        assert "!Split" in result
+        assert "!Ref Environment" in result
+
+        # Test with replace_tags=True
+        result_replaced = process_yaml_template(str(template_file), replace_tags=True)
+
+        # Verify tags are converted
+        assert "Fn::Sub:" in result_replaced
+        assert "Ref: AWS::StackName" in result_replaced
+        assert "Fn::Join:" in result_replaced
+        assert "Fn::Select:" in result_replaced
+        assert "Fn::Split:" in result_replaced

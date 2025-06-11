@@ -1,17 +1,18 @@
 """Tests for OpenAPI processing functionality."""
 
 import json
+
 import pytest
 import yaml
 
 from aws_sam_tools.openapi import (
-    SafeNavigationDict,
-    RuleContext,
-    Rule,
     OutputFormat,
+    Rule,
+    RuleContext,
+    SafeNavigationDict,
+    apply_rules,
     detect_format,
     load_openapi_spec,
-    apply_rules,
     process_openapi,
 )
 
@@ -35,17 +36,17 @@ class TestSafeNavigationDict:
 
         assert nav.items[0].name == "first"
         assert nav.items["1"].name == "second"
-        assert nav.items[2].name == None
+        assert nav.items[2].name == None  # noqa: E711
 
     def test_missing_keys(self):
         """Test navigation with missing keys."""
         data = {"a": {"b": "value"}}
         nav = SafeNavigationDict(data)
 
-        assert nav.x == None
-        assert nav.a.x == None
-        assert nav.a.b.c == None
-        assert nav.x.y.z == None
+        assert nav.x == None  # noqa: E711
+        assert nav.a.x == None  # noqa: E711
+        assert nav.a.b.c == None  # noqa: E711
+        assert nav.x.y.z == None  # noqa: E711
 
     def test_comparisons(self):
         """Test comparison operations."""
@@ -54,8 +55,8 @@ class TestSafeNavigationDict:
 
         assert nav.auth == "oauth2"
         assert nav.auth != "basic"
-        assert nav.empty == None
-        assert nav.missing == None
+        assert nav.empty == None  # noqa: E711
+        assert nav.missing == None  # noqa: E711
         assert bool(nav.auth) is True
         assert bool(nav.empty) is False
         assert bool(nav.missing) is False

@@ -1,14 +1,15 @@
 """Core YAML parsing module with CloudFormation intrinsic function support.
 
-This module provides a custom YAML loader that can parse CloudFormation templates
-with their intrinsic function tags (like !Ref, !GetAtt, !Sub) which standard
-YAML parsers cannot handle properly.
+This module provides a custom YAML loader and dumper that can parse and serialize
+CloudFormation templates with their intrinsic function tags (like !Ref, !GetAtt, !Sub)
+which standard YAML parsers cannot handle properly.
 
 The module includes:
 - CloudFormationTag base class and specific tag implementations
 - Constructor functions for each CloudFormation intrinsic function
 - CloudFormationLoader - custom YAML loader
-- Main API functions for loading YAML files and strings
+- CloudFormationDumper - custom YAML dumper
+- Main API functions for loading and dumping YAML files and strings
 
 Supported CloudFormation Tags:
 - !Ref: Reference to parameters, resources, or pseudo parameters
@@ -26,14 +27,17 @@ Supported CloudFormation Tags:
 - Condition functions: !And, !Equals, !If, !Not, !Or, !Condition
 
 Example:
-    >>> from aws_sam_tools.cfn_yaml import load_yaml_file
+    >>> from aws_sam_tools.cfn_yaml import load_yaml_file, dump_yaml
     >>> template = load_yaml_file('template.yaml')
     >>> print(template['Resources']['MyBucket']['Properties']['BucketName'])
     RefTag('MyBucketName')
+    >>> yaml_string = dump_yaml(template)
+    >>> print(yaml_string)
 """
 
+from typing import Any, Dict, Optional
+
 import yaml
-from typing import Any, Dict, Optional, List, Union
 
 
 def get_node_type_name(node: yaml.Node) -> str:
@@ -74,6 +78,23 @@ class CloudFormationTag:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({repr(self.value)})"
 
+    @classmethod
+    def yaml_representer(cls, dumper: "CloudFormationDumper", data: "CloudFormationTag") -> yaml.Node:
+        """Base YAML representer for CloudFormation tags."""
+        # Get the tag name without 'Tag' suffix from the data object's class
+        tag_name = data.__class__.__name__[:-3] if data.__class__.__name__.endswith("Tag") else data.__class__.__name__
+        yaml_tag = f"!{tag_name}"
+
+        # Handle different value types
+        if isinstance(data.value, str):
+            return dumper.represent_scalar(yaml_tag, data.value, style="")
+        elif isinstance(data.value, list):
+            return dumper.represent_sequence(yaml_tag, data.value)
+        elif isinstance(data.value, dict):
+            return dumper.represent_mapping(yaml_tag, data.value)
+        else:
+            return dumper.represent_scalar(yaml_tag, str(data.value), style="")
+
 
 class RefTag(CloudFormationTag):
     """Represents the !Ref CloudFormation intrinsic function.
@@ -113,7 +134,15 @@ class GetAttTag(CloudFormationTag):
         ['MyBucket', 'DomainName']
     """
 
-    pass
+    @classmethod
+    def yaml_representer(cls, dumper: "CloudFormationDumper", data: "CloudFormationTag") -> yaml.Node:
+        """Custom YAML representer for !GetAtt tag."""
+        # Convert list format back to dot notation when dumping
+        if isinstance(data.value, list) and len(data.value) == 2:
+            scalar_value = f"{data.value[0]}.{data.value[1]}"
+            return dumper.represent_scalar("!GetAtt", scalar_value, style="")
+        else:
+            return super().yaml_representer(dumper, data)
 
 
 class SubTag(CloudFormationTag):
@@ -137,7 +166,14 @@ class SubTag(CloudFormationTag):
         ['Hello ${Name}', {'Name': 'World'}]
     """
 
-    pass
+    @classmethod
+    def yaml_representer(cls, dumper: "CloudFormationDumper", data: "CloudFormationTag") -> yaml.Node:
+        """Custom YAML representer for !Sub tag."""
+        # Handle single string case - unwrap from list
+        if isinstance(data.value, list) and len(data.value) == 1:
+            return dumper.represent_scalar("!Sub", data.value[0], style="")
+        else:
+            return super().yaml_representer(dumper, data)
 
 
 class JoinTag(CloudFormationTag):
@@ -459,6 +495,95 @@ CloudFormationLoader.add_constructor("!If", construct_if)
 CloudFormationLoader.add_constructor("!Not", construct_not)
 CloudFormationLoader.add_constructor("!Or", construct_or)
 CloudFormationLoader.add_constructor("!Condition", construct_condition)
+
+
+class CloudFormationDumper(yaml.SafeDumper):
+    """Custom YAML dumper that supports CloudFormation intrinsic function tags.
+
+    This dumper extends PyYAML's SafeDumper to handle CloudFormation-specific
+    tags and properly serialize CloudFormationTag objects back to their original
+    YAML format.
+
+    Example:
+        >>> import yaml
+        >>> from aws_sam_tools.cfn_yaml import CloudFormationDumper, RefTag
+        >>> data = {'BucketName': RefTag('MyBucket')}
+        >>> yaml.dump(data, Dumper=CloudFormationDumper)
+        'BucketName: !Ref MyBucket\\n'
+    """
+
+    def write_literal(self, text):
+        return super().write_literal(text)
+
+    def choose_scalar_style(self) -> str:
+        """Override scalar style choice to avoid quoting CloudFormation tag values."""
+        # Get the default style
+        style = super().choose_scalar_style()
+
+        # For tagged scalars that look like CloudFormation values, prefer plain style
+        if self.event and hasattr(self.event, "tag") and hasattr(self.event, "value") and getattr(self.event, "tag", None) and getattr(self.event, "tag", "").startswith("!"):
+            value = getattr(self.event, "value", None)
+            # Check if the value can be safely represented without quotes
+            if value and isinstance(value, str):
+                # Allow alphanumeric, spaces, common CloudFormation characters
+                # Special handling for CloudFormation pseudo parameters and resource types with ::
+                # Avoid single colons but allow double colons (::)
+                has_single_colon = ":" in value.replace("::", "")
+                if (
+                    not any(char in value for char in ["\n", "\t", '"', "'", "\\", "#"])
+                    and not has_single_colon
+                    and not value.startswith("-")
+                    and not value.startswith(" ")
+                    and not value.endswith(" ")
+                    and not value.strip() == ""
+                    and value != ""
+                ):
+                    return ""  # Plain style (empty string means plain style in PyYAML)
+
+        return style
+
+
+# Register CloudFormation tag representers
+CloudFormationDumper.add_representer(RefTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(GetAttTag, GetAttTag.yaml_representer)
+CloudFormationDumper.add_representer(SubTag, SubTag.yaml_representer)
+CloudFormationDumper.add_representer(JoinTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(SplitTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(SelectTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(FindInMapTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(Base64Tag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(CidrTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(ImportValueTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(GetAZsTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(TransformTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(AndTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(EqualsTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(IfTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(NotTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(OrTag, CloudFormationTag.yaml_representer)
+CloudFormationDumper.add_representer(ConditionTag, CloudFormationTag.yaml_representer)
+
+
+def dump_yaml(data: Dict[str, Any], stream=None, **kwargs) -> Optional[str]:
+    """
+    Dump data to YAML with CloudFormation tag support.
+
+    Args:
+        data: Data to dump as YAML
+        stream: Optional stream to write to. If None, returns string.
+        **kwargs: Additional keyword arguments to pass to yaml.dump
+
+    Returns:
+        YAML string if stream is None, otherwise None
+    """
+    # Set default to maintain compatibility with existing behavior
+    defaults = {
+        "default_flow_style": False,
+    }
+    # Update with any user-provided kwargs
+    defaults.update(kwargs)
+
+    return yaml.dump(data, stream=stream, Dumper=CloudFormationDumper, **defaults)  # type: ignore
 
 
 def load_yaml(stream: str) -> Dict[str, Any]:

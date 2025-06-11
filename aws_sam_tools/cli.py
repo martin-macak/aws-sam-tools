@@ -21,8 +21,9 @@ from pathlib import Path
 import click
 import yaml
 
-from aws_sam_tools.cfn_processing import load_yaml_file
-from aws_sam_tools.openapi import OutputFormat, process_openapi as process_openapi_spec
+from aws_sam_tools.cfn_processing import process_yaml_template
+from aws_sam_tools.openapi import OutputFormat
+from aws_sam_tools.openapi import process_openapi as process_openapi_spec
 
 
 @click.version_option(prog_name="aws-sam-tools")
@@ -62,21 +63,8 @@ def template() -> None:
 def process(template: Path, output: Path, replace_tags: bool) -> None:
     """Process all CFNTools tags in the CloudFormation YAML file."""
     try:
-        # Check if template exists
-        if not template.exists():
-            click.echo(f"Error: Template file not found: {template}", err=True)
-            sys.exit(1)
-
-        # Load and process the template
-        processed_data = load_yaml_file(str(template), replace_tags=replace_tags)
-
-        # Convert to YAML string
-        output_yaml = yaml.dump(
-            processed_data,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-        )
+        # Process the template using the core function
+        output_yaml = process_yaml_template(str(template), replace_tags=replace_tags)
 
         # Write output
         if str(output) == "-":
@@ -87,8 +75,8 @@ def process(template: Path, output: Path, replace_tags: bool) -> None:
             output.write_text(output_yaml, encoding="utf-8")
             click.echo(f"Processed template written to: {output}", err=True)
 
-    except FileNotFoundError:
-        click.echo(f"Error: Template file not found: {template}", err=True)
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     except yaml.YAMLError as e:
         click.echo(f"Error: Failed to parse YAML: {e}", err=True)

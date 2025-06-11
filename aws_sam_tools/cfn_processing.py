@@ -32,8 +32,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from dunamai import Style
 import yaml
+from dunamai import Style
 
 try:
     from dunamai import Version, get_version
@@ -43,27 +43,27 @@ except ImportError:
     get_version = None
 
 from aws_sam_tools.cfn_yaml import (
-    CloudFormationLoader,
-    CloudFormationTag,
-    get_node_type_name,
-    SubTag,
-    RefTag,
-    GetAttTag,
-    GetAZsTag,
-    ImportValueTag,
-    JoinTag,
-    SelectTag,
-    SplitTag,
-    FindInMapTag,
+    AndTag,
     Base64Tag,
     CidrTag,
-    TransformTag,
-    AndTag,
+    CloudFormationLoader,
+    CloudFormationTag,
+    ConditionTag,
     EqualsTag,
+    FindInMapTag,
+    GetAttTag,
+    GetAZsTag,
     IfTag,
+    ImportValueTag,
+    JoinTag,
     NotTag,
     OrTag,
-    ConditionTag,
+    RefTag,
+    SelectTag,
+    SplitTag,
+    SubTag,
+    TransformTag,
+    get_node_type_name,
 )
 
 
@@ -613,3 +613,54 @@ def load_yaml_file(file_path: str, replace_tags: bool = False) -> Dict[str, Any]
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     return load_yaml(content, file_path, replace_tags)
+
+
+def process_yaml_template(template_path: str, replace_tags: bool = False, **dump_kwargs) -> str:
+    """
+    Process a CloudFormation YAML template file and return the processed YAML string.
+
+    This function loads a YAML template, processes any CFNTools tags, and returns
+    the result as a YAML string with CloudFormation tags properly preserved or
+    converted to intrinsic functions based on the replace_tags parameter.
+
+    Args:
+        template_path: Path to the CloudFormation template file
+        replace_tags: If True, replace CloudFormation tags with intrinsic functions
+        **dump_kwargs: Additional keyword arguments to pass to dump_yaml
+
+    Returns:
+        Processed YAML template as a string
+
+    Raises:
+        FileNotFoundError: If the template file doesn't exist
+        yaml.YAMLError: If the YAML file cannot be parsed
+
+    Example:
+        >>> yaml_output = process_yaml_template('template.yaml')
+        >>> print(yaml_output)  # CloudFormation tags preserved as !Ref, !Sub, etc.
+
+        >>> yaml_output = process_yaml_template('template.yaml', replace_tags=True)
+        >>> print(yaml_output)  # Tags converted to {"Ref": "..."}, {"Fn::Sub": "..."}, etc.
+    """
+    from aws_sam_tools.cfn_yaml import dump_yaml
+
+    # Check if file exists
+    template_file = Path(template_path)
+    if not template_file.exists():
+        raise FileNotFoundError(f"Template file not found: {template_path}")
+
+    # Load and process the template with CFNTools support
+    processed_data = load_yaml_file(str(template_file), replace_tags=replace_tags)
+
+    # Set default dump options for CLI-friendly output
+    default_dump_kwargs = {
+        "sort_keys": False,
+        "allow_unicode": True,
+    }
+    default_dump_kwargs.update(dump_kwargs)
+
+    # Convert to YAML string using CloudFormation dumper
+    result = dump_yaml(processed_data, **default_dump_kwargs)
+    # When stream=None, dump_yaml always returns a string, never None
+    assert result is not None
+    return result

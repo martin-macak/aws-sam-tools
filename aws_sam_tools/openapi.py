@@ -25,12 +25,13 @@ Example:
     >>> # Operations without security are removed
 """
 
-import json
-import yaml
-from typing import Any, Dict, List, Optional, Union
-from pathlib import Path
-from enum import Enum
 import copy
+import json
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+import yaml
 
 
 class OutputFormat(Enum):

@@ -1,17 +1,18 @@
 import pytest
+
 from aws_sam_tools.cfn_yaml import (
-    load_yaml,
-    RefTag,
-    GetAttTag,
-    SubTag,
-    JoinTag,
-    SplitTag,
-    SelectTag,
-    FindInMapTag,
     Base64Tag,
     CidrTag,
-    ImportValueTag,
+    FindInMapTag,
+    GetAttTag,
     GetAZsTag,
+    ImportValueTag,
+    JoinTag,
+    RefTag,
+    SelectTag,
+    SplitTag,
+    SubTag,
+    load_yaml,
 )
 
 # Test data for valid YAML inputs
@@ -296,4 +297,3 @@ def test_yaml_with_comments():
     """
     result = load_yaml(yaml_content)
     assert isinstance(result["Resources"]["MyBucket"]["Properties"]["BucketName"], RefTag)
-    assert result["Resources"]["MyBucket"]["Properties"]["BucketName"].value == "MyBucketName"

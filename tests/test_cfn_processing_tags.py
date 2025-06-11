@@ -1,8 +1,5 @@
 """Tests for CloudFormation tag replacement functionality."""
 
-import pytest
-import yaml
-
 from aws_sam_tools.cfn_processing import load_yaml, load_yaml_file
 
 

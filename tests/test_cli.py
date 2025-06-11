@@ -174,7 +174,7 @@ Resources:
 
         # Create template that includes the file
         template_file = tmp_path / "template.yaml"
-        template_content = f"""Parameters:
+        template_content = """Parameters:
   Config:
     Type: String
     Default: !CFNToolsToString
@@ -273,9 +273,9 @@ Resources:
         result = runner.invoke(cli, ["template", "process", "--template", str(template_file)])
 
         assert result.exit_code == 0
-        # When not using --replace-tags, the YAML dumper will convert tags to their string representation
-        # The exact output depends on how PyYAML handles custom tags
-        assert "BucketParam" in result.output
+        # When not using --replace-tags, CloudFormation tags should be preserved in original format
+        assert "!Ref BucketParam" in result.output
+        assert "BucketName: !Ref BucketParam" in result.output
 
     def test_template_process_replace_tags_with_cfntools_tags(self, tmp_path: Path) -> None:
         """Test that --replace-tags works with both CloudFormation and CFNTools tags."""
