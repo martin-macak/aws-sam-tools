@@ -1127,6 +1127,495 @@ Resources:
         assert bucket_name["Fn::If"][2]["Fn::Join"][0] == "-"
 
 
+class TestProcessYamlTemplateComprehensive:
+    """Comprehensive test cases for the process_yaml_template function."""
+
+    def test_comprehensive_cfntools_and_cloudformation_processing(self, tmp_path: Path) -> None:
+        """
+        Comprehensive test that validates both CFNTools processing and CloudFormation tag preservation.
+
+        This test ensures that:
+        1. CFNTools tags are processed correctly during loading
+        2. CloudFormation tags are preserved as objects and can be dumped back to YAML syntax
+        3. The template structure remains intact
+        4. Both simple and complex nested scenarios work
+        """
+        # Create external files for inclusion
+        config_file = tmp_path / "config.json"
+        config_content = {"database": {"host": "localhost", "port": 5432, "name": "myapp"}, "redis": {"host": "redis.example.com", "port": 6379}}
+        config_file.write_text(json.dumps(config_content, indent=2))
+
+        policy_file = tmp_path / "policy.yaml"
+        policy_content = """Version: '2012-10-17'
+Statement:
+  - Effect: Allow
+    Principal: '*'
+    Action: 's3:GetObject'
+    Resource: !Sub '${BucketArn}/*'"""
+        policy_file.write_text(policy_content)
+
+        # Create comprehensive template with mixed CFNTools and CloudFormation tags
+        template_file = tmp_path / "template.yaml"
+        template_content = """AWSTemplateFormatVersion: '2010-09-09'
+Description: Comprehensive test template with CFNTools and CloudFormation tags
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  BucketPrefix:
+    Type: String
+    Default: my-app
+
+Conditions:
+  IsProduction: !Equals
+    - !Ref Environment
+    - production
+  HasCustomConfig: !Not
+    - !Equals [!Ref BucketPrefix, ""]
+
+Resources:
+  # Resource with multiple CloudFormation tags
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Condition: !And
+      - !Condition IsProduction
+      - !Not [!Equals [!Ref BucketPrefix, ""]]
+    Properties:
+      BucketName: !Sub
+        - '${{Prefix}}-${{Environment}}-${{UUID}}'
+        - Prefix: !Ref BucketPrefix
+          Environment: !Ref Environment
+          UUID: !CFNToolsUUID
+      VersioningConfiguration:
+        Status: !If
+          - IsProduction
+          - Enabled
+          - Suspended
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CreatedAt
+          Value: !CFNToolsTimestamp
+        - Key: Version
+          Value: !CFNToolsVersion
+        - Key: ConfigHash
+          Value: !CFNToolsCRC
+            - !CFNToolsIncludeFile config.json
+            - Algorithm: sha256
+
+  # Lambda function with included policy and various tags
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Join
+        - '-'
+        - - !Ref AWS::StackName
+          - processor
+          - !Select [0, !Split ['-', !Ref AWS::AccountId]]
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          def handler(event, context):
+              return {{'statusCode': 200, 'body': 'Hello'}}
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref S3Bucket
+          CONFIG_DATA: !CFNToolsToString
+            - !CFNToolsIncludeFile config.json
+            - ConvertTo: JSONString
+              OneLine: true
+          POLICY_TEMPLATE: !CFNToolsToString
+            - !CFNToolsIncludeFile policy.yaml
+            - ConvertTo: YAMLString
+
+  # IAM Role with included policy
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${{AWS::StackName}}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument: !CFNToolsIncludeFile policy.yaml
+
+Outputs:
+  BucketName:
+    Description: Name of the created bucket
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub '${{AWS::StackName}}-BucketName'
+  
+  FunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt LambdaFunction.Arn
+    Condition: IsProduction
+  
+  ConfigChecksum:
+    Description: Checksum of configuration
+    Value: !CFNToolsCRC
+      - !CFNToolsIncludeFile config.json
+      - Algorithm: md5
+      - Encoding: base64"""
+
+        template_file.write_text(template_content)
+
+        # Test 1: Process template with replace_tags=False and load back to verify structure
+        result_yaml = process_yaml_template(str(template_file), replace_tags=False)
+
+        # Load the processed YAML back to verify it's valid and check the structure
+        from aws_sam_tools.cfn_yaml import load_yaml
+
+        processed_data = load_yaml(result_yaml)
+
+        # Validate basic template structure is preserved
+        assert processed_data["AWSTemplateFormatVersion"] == "2010-09-09"
+        assert processed_data["Description"] == "Comprehensive test template with CFNTools and CloudFormation tags"
+        assert processed_data["Transform"] == "AWS::Serverless-2016-10-31"
+        assert "Parameters" in processed_data
+        assert "Conditions" in processed_data
+        assert "Resources" in processed_data
+        assert "Outputs" in processed_data
+
+        # Validate CloudFormation tags are preserved as tag objects
+        s3_bucket = processed_data["Resources"]["S3Bucket"]
+        assert hasattr(s3_bucket["Condition"], "value"), "Condition should be a CloudFormation tag object"
+        assert hasattr(s3_bucket["Properties"]["BucketName"], "value"), "BucketName should be a CloudFormation tag object"
+        assert hasattr(s3_bucket["Properties"]["VersioningConfiguration"]["Status"], "value"), "Status should be a CloudFormation tag object"
+
+        # Validate CloudFormation tags in different sections
+        lambda_func = processed_data["Resources"]["LambdaFunction"]
+        assert hasattr(lambda_func["Properties"]["FunctionName"], "value"), "FunctionName should be a CloudFormation tag object"
+        assert hasattr(lambda_func["Properties"]["Role"], "value"), "Role should be a CloudFormation tag object"
+        assert hasattr(lambda_func["Properties"]["Environment"]["Variables"]["BUCKET_NAME"], "value"), "BUCKET_NAME should be a CloudFormation tag object"
+
+        # Validate CFNTools tags were processed correctly
+        # UUID should be a string now (processed)
+        uuid_value = s3_bucket["Properties"]["BucketName"].value[1]["UUID"]
+        assert isinstance(uuid_value, str), "UUID should be processed to a string"
+        import re
+
+        uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        assert re.match(uuid_pattern, uuid_value), "UUID should be valid format"
+
+        # Timestamp should be a string (processed)
+        timestamp_value = s3_bucket["Properties"]["Tags"][1]["Value"]
+        assert isinstance(timestamp_value, str), "Timestamp should be processed to a string"
+        timestamp_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
+        assert re.match(timestamp_pattern, timestamp_value), "Timestamp should be valid ISO format"
+
+        # Version should be a string (processed)
+        version_value = s3_bucket["Properties"]["Tags"][2]["Value"]
+        assert isinstance(version_value, str), "Version should be processed to a string"
+
+        # ConfigHash should be a string (processed)
+        config_hash_value = s3_bucket["Properties"]["Tags"][3]["Value"]
+        assert isinstance(config_hash_value, str), "ConfigHash should be processed to a string"
+        sha256_pattern = r"^[0-9a-f]{64}$"
+        assert re.match(sha256_pattern, config_hash_value), "ConfigHash should be SHA256 hex string"
+
+        # CONFIG_DATA should be a JSON string with included file content
+        config_data_value = lambda_func["Properties"]["Environment"]["Variables"]["CONFIG_DATA"]
+        assert isinstance(config_data_value, str), "CONFIG_DATA should be processed to a string"
+        config_parsed = json.loads(config_data_value)
+        assert config_parsed["database"]["host"] == "localhost"
+        assert config_parsed["database"]["port"] == 5432
+        assert config_parsed["redis"]["host"] == "redis.example.com"
+
+        # POLICY_TEMPLATE should be a YAML string with included file content
+        policy_template_value = lambda_func["Properties"]["Environment"]["Variables"]["POLICY_TEMPLATE"]
+        assert isinstance(policy_template_value, str), "POLICY_TEMPLATE should be processed to a string"
+        assert "Version: '2012-10-17'" in policy_template_value
+        assert "s3:GetObject" in policy_template_value
+
+        # Included policy should be expanded in IAM role
+        role_policy = processed_data["Resources"]["LambdaRole"]["Properties"]["Policies"][0]["PolicyDocument"]
+        assert role_policy["Version"] == "2012-10-17"
+        assert role_policy["Statement"][0]["Effect"] == "Allow"
+        assert role_policy["Statement"][0]["Action"] == "s3:GetObject"
+        # The !Sub tag in the included file should be preserved
+        assert hasattr(role_policy["Statement"][0]["Resource"], "value"), "Resource should be a CloudFormation tag object"
+
+        # MD5 checksum in outputs should be processed
+        config_checksum_value = processed_data["Outputs"]["ConfigChecksum"]["Value"]
+        assert isinstance(config_checksum_value, str), "ConfigChecksum should be processed to a string"
+        # MD5 is 32 hex characters
+        md5_pattern = r"^[0-9a-f]{32}$"
+        assert re.match(md5_pattern, config_checksum_value), "ConfigChecksum should be MD5 hex string"
+
+        # Test 2: Process template with replace_tags=True and verify intrinsic functions
+        result_yaml_replaced = process_yaml_template(str(template_file), replace_tags=True)
+        processed_data_replaced = yaml.safe_load(result_yaml_replaced)
+
+        # Validate CloudFormation tags are converted to intrinsic functions
+        s3_bucket_replaced = processed_data_replaced["Resources"]["S3Bucket"]
+        assert isinstance(s3_bucket_replaced["Condition"], dict), "Condition should be converted to dict"
+        assert "Fn::And" in s3_bucket_replaced["Condition"], "Condition should use Fn::And"
+
+        bucket_name_replaced = s3_bucket_replaced["Properties"]["BucketName"]
+        assert isinstance(bucket_name_replaced, dict), "BucketName should be converted to dict"
+        assert "Fn::Sub" in bucket_name_replaced, "BucketName should use Fn::Sub"
+
+        # Validate CFNTools processing still worked in replace_tags=True mode
+        lambda_func_replaced = processed_data_replaced["Resources"]["LambdaFunction"]
+        config_data_replaced = lambda_func_replaced["Properties"]["Environment"]["Variables"]["CONFIG_DATA"]
+        assert isinstance(config_data_replaced, str), "CONFIG_DATA should still be processed string"
+        config_parsed_replaced = json.loads(config_data_replaced)
+        assert config_parsed_replaced["database"]["host"] == "localhost"
+
+        # Validate the processed result is valid YAML that can be parsed
+        assert processed_data_replaced["AWSTemplateFormatVersion"] == "2010-09-09"
+        assert "S3Bucket" in processed_data_replaced["Resources"]
+        assert "LambdaFunction" in processed_data_replaced["Resources"]
+
+    def test_cloudformation_tags_survive_roundtrip(self, tmp_path: Path) -> None:
+        """
+        Test that CloudFormation tags survive the process → dump → load cycle.
+
+        This verifies that after processing with CFNTools and dumping back to YAML,
+        the CloudFormation tags can still be parsed correctly when loaded again.
+        """
+        # Create a template with both CFNTools and CloudFormation tags
+        template_file = tmp_path / "template.yaml"
+        template_content = """AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-bucket'
+      BucketId: !CFNToolsUUID
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CreatedAt
+          Value: !CFNToolsTimestamp
+      VersioningConfiguration:
+        Status: !If
+          - IsProduction
+          - Enabled
+          - Suspended
+      NotificationConfiguration:
+        TopicConfigurations:
+          - Topic: !GetAtt MyTopic.Arn
+            Event: s3:ObjectCreated:*
+
+  MyTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Join
+        - '-'
+        - - !Ref AWS::StackName
+          - notifications
+          - !Select [0, !Split ['-', !Ref AWS::AccountId]]
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+
+Conditions:
+  IsProduction: !Equals
+    - !Ref Environment
+    - production"""
+
+        template_file.write_text(template_content)
+
+        # Step 1: Process template (CFNTools tags processed, CloudFormation tags preserved)
+        processed_yaml = process_yaml_template(str(template_file), replace_tags=False)
+
+        # Step 2: Load the processed YAML again with CloudFormation loader to verify tags survived
+        from aws_sam_tools.cfn_yaml import EqualsTag, GetAttTag, IfTag, JoinTag, RefTag, SelectTag, SplitTag, SubTag, load_yaml
+
+        reloaded_data = load_yaml(processed_yaml)
+
+        # Verify template structure is intact
+        assert reloaded_data["AWSTemplateFormatVersion"] == "2010-09-09"
+        assert "Resources" in reloaded_data
+        assert "Parameters" in reloaded_data
+        assert "Conditions" in reloaded_data
+
+        # Verify CFNTools tags were processed (UUID and timestamp should be actual values)
+        s3_bucket = reloaded_data["Resources"]["S3Bucket"]
+
+        # BucketName should be a SubTag (CloudFormation tag preserved)
+        bucket_name_tag = s3_bucket["Properties"]["BucketName"]
+        assert isinstance(bucket_name_tag, SubTag), "BucketName should be SubTag object"
+        assert bucket_name_tag.value == ["${AWS::StackName}-bucket"], "BucketName SubTag should have correct template"
+
+        # BucketId should be processed UUID (CFNTools tag processed)
+        bucket_id_value = s3_bucket["Properties"]["BucketId"]
+        assert isinstance(bucket_id_value, str), "BucketId should be processed to string"
+        import re
+
+        uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        assert re.match(uuid_pattern, bucket_id_value), "BucketId should be valid UUID"
+
+        # CreatedAt timestamp should be processed to actual timestamp
+        created_at_value = s3_bucket["Properties"]["Tags"][1]["Value"]
+        assert isinstance(created_at_value, str), "CreatedAt should be processed to string"
+        timestamp_pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+        assert re.match(timestamp_pattern, created_at_value), "CreatedAt should be valid timestamp"
+
+        # Verify CloudFormation tags are properly preserved as tag objects
+        # Environment should be RefTag
+        environment_tag = s3_bucket["Properties"]["Tags"][0]["Value"]
+        assert isinstance(environment_tag, RefTag), "Environment should be RefTag object"
+        assert environment_tag.value == "Environment", "RefTag should reference 'Environment'"
+
+        # Status should be IfTag
+        status_tag = s3_bucket["Properties"]["VersioningConfiguration"]["Status"]
+        assert isinstance(status_tag, IfTag), "Status should be IfTag object"
+        assert status_tag.value == ["IsProduction", "Enabled", "Suspended"], "IfTag should have correct condition and values"
+
+        # Topic should be GetAttTag
+        topic_tag = s3_bucket["Properties"]["NotificationConfiguration"]["TopicConfigurations"][0]["Topic"]
+        assert isinstance(topic_tag, GetAttTag), "Topic should be GetAttTag object"
+        assert topic_tag.value == ["MyTopic", "Arn"], "GetAttTag should reference MyTopic.Arn"
+
+        # TopicName should be JoinTag with nested tags
+        my_topic = reloaded_data["Resources"]["MyTopic"]
+        topic_name_tag = my_topic["Properties"]["TopicName"]
+        assert isinstance(topic_name_tag, JoinTag), "TopicName should be JoinTag object"
+
+        # Verify the JoinTag structure: [delimiter, [values...]]
+        join_value = topic_name_tag.value
+        assert isinstance(join_value, list) and len(join_value) == 2, "JoinTag should have delimiter and values"
+        assert join_value[0] == "-", "Join delimiter should be '-'"
+
+        # Values should contain RefTag and SelectTag
+        join_values = join_value[1]
+        assert isinstance(join_values[0], RefTag), "First join value should be RefTag"
+        assert join_values[0].value == "AWS::StackName", "RefTag should reference AWS::StackName"
+        assert join_values[1] == "notifications", "Second join value should be literal string"
+        assert isinstance(join_values[2], SelectTag), "Third join value should be SelectTag"
+
+        # Verify SelectTag contains SplitTag
+        select_tag = join_values[2]
+        select_value = select_tag.value
+        assert select_value[0] == 0, "SelectTag should select index 0"
+        assert isinstance(select_value[1], SplitTag), "SelectTag should contain SplitTag"
+
+        # Verify SplitTag contains RefTag
+        split_tag = select_value[1]
+        split_value = split_tag.value
+        assert split_value[0] == "-", "SplitTag delimiter should be '-'"
+        assert isinstance(split_value[1], RefTag), "SplitTag should contain RefTag"
+        assert split_value[1].value == "AWS::AccountId", "RefTag should reference AWS::AccountId"
+
+        # Verify Condition is EqualsTag
+        condition_tag = reloaded_data["Conditions"]["IsProduction"]
+        assert isinstance(condition_tag, EqualsTag), "Condition should be EqualsTag object"
+        condition_value = condition_tag.value
+        assert isinstance(condition_value[0], RefTag), "First equals value should be RefTag"
+        assert condition_value[0].value == "Environment", "RefTag should reference Environment"
+        assert condition_value[1] == "production", "Second equals value should be 'production'"
+
+        # Step 3: Verify the reloaded data can be dumped again and still contains CloudFormation tags
+        from aws_sam_tools.cfn_yaml import dump_yaml
+
+        redumped_yaml = dump_yaml(reloaded_data)
+
+        # Step 4: Load the redumped YAML to verify tags are still valid
+        final_reloaded_data = load_yaml(redumped_yaml)
+
+        # Verify CloudFormation tags are still preserved after round-trip
+        final_s3_bucket = final_reloaded_data["Resources"]["S3Bucket"]
+
+        # Check that tag types are preserved
+        final_environment_tag = final_s3_bucket["Properties"]["Tags"][0]["Value"]
+        assert isinstance(final_environment_tag, RefTag), "Environment should still be RefTag after round-trip"
+        assert final_environment_tag.value == "Environment", "RefTag value should be preserved"
+
+        final_status_tag = final_s3_bucket["Properties"]["VersioningConfiguration"]["Status"]
+        assert isinstance(final_status_tag, IfTag), "Status should still be IfTag after round-trip"
+
+        final_topic_tag = final_s3_bucket["Properties"]["NotificationConfiguration"]["TopicConfigurations"][0]["Topic"]
+        assert isinstance(final_topic_tag, GetAttTag), "Topic should still be GetAttTag after round-trip"
+        assert final_topic_tag.value == ["MyTopic", "Arn"], "GetAttTag value should be preserved"
+
+        final_condition_tag = final_reloaded_data["Conditions"]["IsProduction"]
+        assert isinstance(final_condition_tag, EqualsTag), "Condition should still be EqualsTag after round-trip"
+
+        # Verify CFNTools processing results are preserved (UUID and timestamp should still be there)
+        final_bucket_name_tag = final_s3_bucket["Properties"]["BucketName"]
+        assert isinstance(final_bucket_name_tag, SubTag), "BucketName should still be SubTag after round-trip"
+        assert final_bucket_name_tag.value == ["${AWS::StackName}-bucket"], "BucketName SubTag should be preserved"
+
+        final_bucket_id_value = final_s3_bucket["Properties"]["BucketId"]
+        assert isinstance(final_bucket_id_value, str), "BucketId should still be string after round-trip"
+        assert re.match(uuid_pattern, final_bucket_id_value), "UUID should still be valid after round-trip"
+
+        final_created_at_value = final_s3_bucket["Properties"]["Tags"][1]["Value"]
+        assert isinstance(final_created_at_value, str), "CreatedAt should still be string after round-trip"
+        assert re.match(timestamp_pattern, final_created_at_value), "Timestamp should still be valid after round-trip"
+
+    def test_process_yaml_template_error_handling(self, tmp_path: Path) -> None:
+        """Test error handling in process_yaml_template."""
+        # Test file not found
+        with pytest.raises(FileNotFoundError, match="Template file not found"):
+            process_yaml_template("/nonexistent/template.yaml")
+
+        # Test invalid YAML with CFNTools tag error
+        invalid_template = tmp_path / "invalid.yaml"
+        invalid_content = """Resources:
+  Bucket:
+    Properties:
+      Config: !CFNToolsIncludeFile nonexistent.yaml"""
+        invalid_template.write_text(invalid_content)
+
+        with pytest.raises(yaml.constructor.ConstructorError, match="file not found"):
+            process_yaml_template(str(invalid_template))
+
+    def test_process_yaml_template_edge_cases(self, tmp_path: Path) -> None:
+        """Test edge cases in process_yaml_template."""
+        # Test empty template
+        empty_template = tmp_path / "empty.yaml"
+        empty_template.write_text("")
+
+        result = process_yaml_template(str(empty_template))
+        assert "null" in result
+
+        # Test template with only CloudFormation tags
+        cf_only_template = tmp_path / "cf_only.yaml"
+        cf_only_content = """Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName"""
+        cf_only_template.write_text(cf_only_content)
+
+        result = process_yaml_template(str(cf_only_template))
+        assert "!Ref BucketName" in result
+
+        # Test template with only CFNTools tags
+        cfntools_only_template = tmp_path / "cfntools_only.yaml"
+        cfntools_only_content = """Config:
+  UUID: !CFNToolsUUID
+  Timestamp: !CFNToolsTimestamp"""
+        cfntools_only_template.write_text(cfntools_only_content)
+
+        result = process_yaml_template(str(cfntools_only_template))
+        assert "!CFNToolsUUID" not in result
+        assert "!CFNToolsTimestamp" not in result
+
+
 class TestProcessYamlTemplate:
     """Test cases for the process_yaml_template function."""
 
