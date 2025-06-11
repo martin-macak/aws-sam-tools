@@ -1,4 +1,4 @@
-"""Tests for the CLI module."""
+"""Tests for the cli module."""
 
 from pathlib import Path
 
@@ -9,8 +9,8 @@ from click.testing import CliRunner
 from aws_sam_tools.cli import cli
 
 
-class TestCLI:
-    """Test cases for the CLI."""
+class TestCLIGeneral:
+    """Test cases for general CLI functionality."""
 
     def test_cli_no_command_shows_error(self) -> None:
         """Test that running cli without command shows error."""
@@ -20,6 +20,27 @@ class TestCLI:
         assert result.exit_code == 2
         assert "Usage:" in result.output
 
+    def test_cli_help(self) -> None:
+        """Test CLI help command."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--help"])
+
+        assert result.exit_code == 0
+        assert "AWS SAM Tools" in result.output
+        assert "Process CloudFormation templates" in result.output
+
+    def test_invalid_command(self) -> None:
+        """Test invalid command shows error."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["invalid"])
+
+        assert result.exit_code == 2  # Click's usage error
+        assert "No such command" in result.output
+
+
+class TestTemplateCommand:
+    """Test cases for template command functionality."""
+
     def test_template_no_subcommand_shows_error(self) -> None:
         """Test that running template without subcommand shows error."""
         runner = CliRunner()
@@ -27,6 +48,37 @@ class TestCLI:
 
         assert result.exit_code == 2
         assert "Usage:" in result.output
+
+    def test_template_help(self) -> None:
+        """Test template command help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "--help"])
+
+        assert result.exit_code == 0
+        assert "Commands for working with CloudFormation templates" in result.output
+        assert "process" in result.output
+
+    def test_invalid_template_subcommand(self) -> None:
+        """Test invalid template subcommand shows error."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "invalid"])
+
+        assert result.exit_code == 2  # Click's usage error
+        assert "No such command" in result.output
+
+
+class TestTemplateProcessCommand:
+    """Test cases for template process command functionality."""
+
+    def test_template_process_help(self) -> None:
+        """Test template process subcommand help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["template", "process", "--help"])
+
+        assert result.exit_code == 0
+        assert "Process all CFNTools tags" in result.output
+        assert "--template" in result.output
+        assert "--output" in result.output
 
     def test_template_process_command_default_template(self, tmp_path: Path) -> None:
         """Test template process command with default template.yaml."""
@@ -135,34 +187,6 @@ Resources:
         assert result.exit_code == 1
         assert "Error:" in result.output
 
-    def test_cli_help(self) -> None:
-        """Test CLI help command."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["--help"])
-
-        assert result.exit_code == 0
-        assert "AWS SAM Tools" in result.output
-        assert "Process CloudFormation templates" in result.output
-
-    def test_template_help(self) -> None:
-        """Test template command help."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["template", "--help"])
-
-        assert result.exit_code == 0
-        assert "Commands for working with CloudFormation templates" in result.output
-        assert "process" in result.output
-
-    def test_template_process_help(self) -> None:
-        """Test template process subcommand help."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["template", "process", "--help"])
-
-        assert result.exit_code == 0
-        assert "Process all CFNTools tags" in result.output
-        assert "--template" in result.output
-        assert "--output" in result.output
-
     def test_template_process_with_included_file(self, tmp_path: Path) -> None:
         """Test template process command with file inclusion."""
         # Create included file
@@ -217,21 +241,9 @@ Resources:
         assert result.exit_code == 0
         assert output_file.exists()
 
-    def test_invalid_command(self) -> None:
-        """Test invalid command shows error."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["invalid"])
 
-        assert result.exit_code == 2  # Click's usage error
-        assert "No such command" in result.output
-
-    def test_invalid_template_subcommand(self) -> None:
-        """Test invalid template subcommand shows error."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["template", "invalid"])
-
-        assert result.exit_code == 2  # Click's usage error
-        assert "No such command" in result.output
+class TestTemplateProcessReplaceTagsFeature:
+    """Test cases for the --replace-tags feature in template process command."""
 
     def test_template_process_with_replace_tags(self, tmp_path: Path) -> None:
         """Test template process command with --replace-tags option."""
