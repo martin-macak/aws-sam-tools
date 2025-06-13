@@ -5,362 +5,417 @@
 [![PyPI version](https://badge.fury.io/py/aws-sam-tools.svg)](https://badge.fury.io/py/aws-sam-tools)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 
-A comprehensive Python package for processing AWS CloudFormation templates with advanced YAML parsing capabilities and extended processing features.
+A powerful command-line tool for processing AWS CloudFormation templates with advanced template enhancement capabilities. Transform your infrastructure-as-code workflows with dynamic content inclusion, automated versioning, and intelligent template processing.
 
-## Overview
+## ✨ Key Features
 
-aws-sam-tools provides utilities for working with AWS CloudFormation templates, including a custom YAML parser that properly handles CloudFormation-specific intrinsic function tags (like `!Ref`, `!GetAtt`, `!Sub`) which standard YAML parsers cannot handle correctly. The package also includes extended processing capabilities for advanced template manipulation and an OpenAPI specification processor.
+### 🔧 Advanced Template Processing
+- **Dynamic File Inclusion**: Include external files directly into your templates
+- **Automatic Versioning**: Inject git version information into your infrastructure
+- **UUID Generation**: Generate unique identifiers for resources
+- **Timestamp Injection**: Add build and deployment timestamps
+- **Checksum Calculation**: Ensure configuration integrity with automated hashing
+- **String Conversion**: Convert complex data structures to JSON/YAML strings
 
-## Key Features
+### 🌐 OpenAPI Specification Processing
+- **Rule-Based Filtering**: Remove or modify API operations based on custom rules
+- **Security-Based Filtering**: Filter endpoints by security requirements
+- **Format Conversion**: Convert between JSON and YAML formats
+- **Pipeline Integration**: Perfect for CI/CD automation
 
-### 🔧 CloudFormation YAML Processing
-- **Custom YAML Loader**: Properly parses all CloudFormation intrinsic function tags
-- **Tag Preservation**: Maintains CloudFormation syntax while enabling programmatic access
-- **Validation**: Built-in validation for CloudFormation tag syntax according to AWS specifications
-- **Error Handling**: Detailed error messages with YAML position information
+### ⚡ CloudFormation Compatibility
+- **Native Tag Support**: Full support for all CloudFormation intrinsic functions
+- **Tag Conversion**: Convert shorthand tags to AWS-compatible intrinsic functions
+- **Template Validation**: Ensure your templates remain CloudFormation-compliant
 
-### ⚡ Extended Processing Capabilities
-- **File Inclusion**: Include content from external files (`!CFNToolsIncludeFile`)
-- **String Conversion**: Convert data structures to JSON/YAML strings (`!CFNToolsToString`)
-- **UUID Generation**: Generate unique identifiers (`!CFNToolsUUID`)
-- **Version Stamping**: Include git version information (`!CFNToolsVersion`)
-- **Timestamp Generation**: Add timestamps with formatting options (`!CFNToolsTimestamp`)
-- **Checksum Calculation**: Calculate hashes of data or files (`!CFNToolsCRC`)
+## 🚀 Quick Start
 
-### 🌐 OpenAPI Processing
-- **Rule-Based Transformations**: Filter and modify OpenAPI specifications
-- **Flexible Expressions**: Use Python expressions for complex filtering logic
-- **Multiple Formats**: Support for both JSON and YAML OpenAPI specifications
-
-### 🖥️ Command Line Interface
-- **Template Processing**: Process CloudFormation templates from command line
-- **OpenAPI Processing**: Apply transformations to OpenAPI specifications
-- **Format Conversion**: Convert between different output formats
-- **Integration Ready**: Easy integration into build pipelines and CI/CD workflows
-
-## Supported CloudFormation Tags
-
-The package supports all standard CloudFormation intrinsic functions:
-
-| Tag            | Description                       | Example                                                    |
-| -------------- | --------------------------------- | ---------------------------------------------------------- |
-| `!Ref`         | Reference parameters or resources | `!Ref MyBucket`                                            |
-| `!GetAtt`      | Get resource attributes           | `!GetAtt MyBucket.DomainName`                              |
-| `!Sub`         | String substitution               | `!Sub 'Hello ${Name}'`                                     |
-| `!Join`        | Join values with delimiter        | `!Join [',', [a, b, c]]`                                   |
-| `!Split`       | Split string into array           | `!Split [',', 'a,b,c']`                                    |
-| `!Select`      | Select from array                 | `!Select [0, !GetAZs '']`                                  |
-| `!FindInMap`   | Find value in mapping             | `!FindInMap [RegionMap, !Ref 'AWS::Region', AMI]`          |
-| `!Base64`      | Base64 encode                     | `!Base64 'Hello World'`                                    |
-| `!Cidr`        | Generate CIDR blocks              | `!Cidr ['10.0.0.0/16', 6, 8]`                              |
-| `!ImportValue` | Import from another stack         | `!ImportValue SharedVPC`                                   |
-| `!GetAZs`      | Get availability zones            | `!GetAZs 'us-east-1'`                                      |
-| `!Transform`   | Apply transforms                  | `!Transform {'Name': 'AWS::Include', 'Parameters': {...}}` |
-
-Plus all condition functions: `!And`, `!Equals`, `!If`, `!Not`, `!Or`, `!Condition`
-
-## Installation
+### Installation
 
 ```bash
 pip install aws-sam-tools
 ```
 
-For development:
+### Basic Usage
+
+Process a CloudFormation template with enhanced capabilities:
+
 ```bash
-git clone https://github.com/yourusername/aws-sam-tools.git
-cd aws-sam-tools
-make init
-```
-
-## Quick Start
-
-### Basic CloudFormation Template Processing
-
-```python
-from aws_sam_tools.cfn_yaml import load_yaml_file
-
-# Load a CloudFormation template
-template = load_yaml_file('template.yaml')
-
-# Access CloudFormation tags as objects
-bucket_name = template['Resources']['MyBucket']['Properties']['BucketName']
-print(type(bucket_name))  # <class 'aws_sam_tools.cfn_yaml.RefTag'>
-print(bucket_name.value)  # 'MyBucketParameter'
-```
-
-### Extended Processing with CFNTools Tags
-
-```yaml
-# template.yaml
-AWSTemplateFormatVersion: '2010-09-09'
-Description: !CFNToolsToString
-  - Template built on: !CFNToolsTimestamp
-    Version: !CFNToolsVersion
-    ID: !CFNToolsUUID
-  - ConvertTo: JSONString
-    OneLine: true
-
-Resources:
-  UserDataScript: !CFNToolsIncludeFile scripts/setup.sh
-  
-  ConfigurationHash: !CFNToolsCRC
-    - !CFNToolsIncludeFile config/app-config.json
-    - Algorithm: sha256
-      Encoding: hex
-```
-
-```python
-from aws_sam_tools.cfn_processing import load_yaml_file
-
-# Process template with CFNTools tags
-template = load_yaml_file('template.yaml')
-
-# CFNTools tags are resolved:
-# - !CFNToolsTimestamp becomes actual timestamp
-# - !CFNToolsUUID becomes generated UUID
-# - !CFNToolsIncludeFile includes file content
-# - !CFNToolsCRC calculates checksum
-```
-
-### Convert to AWS-Compatible Format
-
-```python
-from aws_sam_tools.cfn_processing import load_yaml_file
-import yaml
-
-# Load and convert CloudFormation tags to intrinsic functions
-template = load_yaml_file('template.yaml', replace_tags=True)
-
-# Output AWS-compatible YAML
-aws_yaml = yaml.dump(template, default_flow_style=False)
-print(aws_yaml)
-# BucketName: 
-#   Ref: MyBucketParameter
-```
-
-### Command Line Usage
-
-Process CloudFormation templates:
-```bash
-# Process CFNTools tags and convert CloudFormation tags to intrinsic functions
-aws-sam-tools template process --template template.yaml --output processed.yaml --replace-tags
-
-# Process without converting CloudFormation tags
+# Process template with CFNTools enhancements
 aws-sam-tools template process --template template.yaml --output processed.yaml
+
+# Convert CloudFormation tags to intrinsic functions for AWS compatibility
+aws-sam-tools template process --template template.yaml --output aws-compatible.yaml --replace-tags
 ```
 
-Process OpenAPI specifications:
+## 📋 Command Reference
+
+### Template Processing
+
 ```bash
-# Remove operations without security requirements
+aws-sam-tools template process [OPTIONS]
+```
+
+**Options:**
+- `--template, -t PATH`: Input CloudFormation template (default: `template.yaml`)
+- `--output, -o PATH`: Output file (default: stdout with `-`)
+- `--replace-tags`: Convert CloudFormation tags to intrinsic functions
+
+**Examples:**
+
+```bash
+# Basic processing
+aws-sam-tools template process
+
+# Specify input and output files
+aws-sam-tools template process --template src/template.yaml --output dist/template.yaml
+
+# Convert tags for AWS deployment
+aws-sam-tools template process --template template.yaml --output aws-template.yaml --replace-tags
+
+# Output to stdout for pipeline integration
+aws-sam-tools template process --template template.yaml | aws cloudformation deploy ...
+```
+
+### OpenAPI Processing
+
+```bash
+aws-sam-tools openapi process [OPTIONS]
+```
+
+**Options:**
+- `--input PATH`: Input OpenAPI specification (default: stdin with `-`)
+- `--output PATH`: Output file (default: stdout with `-`)
+- `--rule TEXT`: Processing rule (can be specified multiple times)
+- `--format [json|yaml|default]`: Output format (default: same as input)
+
+**Rule Syntax:**
+```
+<node_type> : <action> : <filter_expression>
+```
+
+**Examples:**
+
+```bash
+# Remove all operations without security requirements
 aws-sam-tools openapi process \
   --rule "path/method : delete : resource.security == 'none'" \
   --input api.yaml \
   --output filtered-api.yaml
 
-# Multiple rules
+# Multiple filtering rules
 aws-sam-tools openapi process \
   --rule "path/method : delete : resource.security == 'none'" \
   --rule "path/method : delete : method == 'options'" \
+  --input api.yaml \
+  --format json
+
+# Remove internal endpoints
+aws-sam-tools openapi process \
+  --rule "path/method : delete : path.startswith('/internal')" \
   --input api.yaml
 ```
 
-## CFNTools Processing Tags
+## 🏷️ CFNTools Processing Tags
+
+Enhance your CloudFormation templates with powerful processing capabilities:
 
 ### File Inclusion (`!CFNToolsIncludeFile`)
 
-Include content from external files:
+Include content from external files into your templates:
 
 ```yaml
-# Include shell script
-UserData: !CFNToolsIncludeFile scripts/userdata.sh
+# Include shell script for EC2 UserData
+Resources:
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      UserData: !CFNToolsIncludeFile scripts/setup.sh
 
-# Include JSON configuration  
-Config: !CFNToolsIncludeFile config/app.json
+# Include JSON configuration
+  AppConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Value: !CFNToolsIncludeFile config/app-config.json
 
-# Include nested YAML with CFNTools support
-NestedTemplate: !CFNToolsIncludeFile templates/nested.yaml
+# Include nested CloudFormation template
+  NestedStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateBody: !CFNToolsIncludeFile templates/nested.yaml
 ```
+
+**Features:**
+- Supports relative and absolute paths
+- Automatically detects file format (JSON, YAML, text)
+- Processes nested CloudFormation tags in included YAML files
 
 ### String Conversion (`!CFNToolsToString`)
 
-Convert data structures to strings:
+Convert data structures to strings for various use cases:
 
 ```yaml
-# Convert to JSON string
-PolicyDocument: !CFNToolsToString
-  - Version: '2012-10-17'
-    Statement:
-      - Effect: Allow
-        Action: 's3:GetObject'
-  - ConvertTo: JSONString
-    OneLine: true
+# Convert policy document to JSON string
+Resources:
+  MyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: !CFNToolsToString
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        - ConvertTo: JSONString
+          OneLine: true
 
-# Convert to YAML string
-ConfigData: !CFNToolsToString
-  - database:
-      host: localhost
-      port: 5432
-  - ConvertTo: YAMLString
+# Convert configuration to YAML string
+  ConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Value: !CFNToolsToString
+        - database:
+            host: !Ref DatabaseHost
+            port: 5432
+            ssl: true
+        - ConvertTo: YAMLString
 ```
 
-### Unique Identifiers (`!CFNToolsUUID`)
+**Options:**
+- `ConvertTo`: `"JSONString"` (default) or `"YAMLString"`
+- `OneLine`: `true` or `false` (default) - compress to single line
 
-Generate UUIDs:
+### UUID Generation (`!CFNToolsUUID`)
+
+Generate unique identifiers for resources:
 
 ```yaml
 Resources:
-  MyResource:
+  S3Bucket:
+    Type: AWS::S3::Bucket
     Properties:
-      UniqueId: !CFNToolsUUID
+      BucketName: !Sub
+        - "my-app-${UniqueId}"
+        - UniqueId: !CFNToolsUUID
+
+  DeploymentId:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /app/deployment-id
+      Value: !CFNToolsUUID
 ```
 
 ### Version Information (`!CFNToolsVersion`)
 
-Include git version:
+Include git version information in your infrastructure:
 
 ```yaml
 Parameters:
-  Version:
+  AppVersion:
     Type: String
     Default: !CFNToolsVersion
 
-  PEP440Version:
-    Type: String  
+  BuildVersion:
+    Type: String
     Default: !CFNToolsVersion
       Style: pep440
+
+Resources:
+  VersionParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /app/version
+      Value: !Ref AppVersion
 ```
 
-### Timestamps (`!CFNToolsTimestamp`)
+**Options:**
+- `Source`: `"Git"` (default) or `"Any"`
+- `Style`: `"semver"` (default) or `"pep440"`
 
-Generate timestamps:
+### Timestamp Generation (`!CFNToolsTimestamp`)
+
+Add timestamps to track deployments and expiry:
 
 ```yaml
 Parameters:
-  BuildTime:
+  DeploymentTime:
+    Type: String
     Default: !CFNToolsTimestamp
-    
-  ExpiryTime:
+
+  ExpiryDate:
+    Type: String
     Default: !CFNToolsTimestamp
       Offset: 30
       OffsetUnit: days
       Format: '%Y-%m-%d'
+
+Resources:
+  DeploymentMetadata:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /app/deployed-at
+      Value: !CFNToolsTimestamp
+        Format: '%Y-%m-%d %H:%M:%S UTC'
 ```
 
-### Checksums (`!CFNToolsCRC`)
+**Options:**
+- `Format`: Python strftime format (default: ISO-8601 UTC)
+- `Offset`: Integer offset from current time (default: 0)
+- `OffsetUnit`: `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`, `"months"`, `"years"`
 
-Calculate hashes:
+### Checksum Calculation (`!CFNToolsCRC`)
+
+Calculate checksums for configuration integrity:
 
 ```yaml
-Parameters:
+Resources:
   ConfigHash:
-    Default: !CFNToolsCRC
-      - !CFNToolsIncludeFile config.json
-      - Algorithm: sha256
-        Encoding: hex
-        
-  FileHash:
-    Default: !CFNToolsCRC ["file://./setup.sh"]
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /app/config-hash
+      Value: !CFNToolsCRC
+        - !CFNToolsIncludeFile config/production.json
+        - Algorithm: sha256
+          Encoding: hex
+
+  ScriptIntegrity:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Value: !CFNToolsCRC
+        - "file://scripts/deployment.sh"
+        - Algorithm: md5
+          Encoding: base64
 ```
 
-## OpenAPI Processing
+**Options:**
+- `Algorithm`: `"md5"`, `"sha1"`, `"sha256"` (default), `"sha512"`
+- `Encoding`: `"hex"` (default) or `"base64"`
 
-Process OpenAPI specifications with rule-based transformations:
+**Value Types:**
+- String values are hashed directly
+- Objects/arrays are converted to JSON before hashing
+- `"file://path"` reads and hashes file content
 
-```python
-from aws_sam_tools.openapi import process_openapi
+## 🔄 Template Conversion
 
-# Remove all operations without security
-rules = ["path/method : delete : resource.security == 'none'"]
-result = process_openapi(openapi_content, rules)
+Convert between CloudFormation tag formats:
 
-# Complex filtering
-rules = [
-    "path/method : delete : resource.security == 'none'",
-    "path/method : delete : method == 'options'",
-    "path/method : delete : path.startswith('/internal')"
-]
-result = process_openapi(openapi_content, rules)
+### Input Template (with shorthand tags):
+```yaml
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketParameter
+      Policy: !Sub |
+        {
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": "${MyBucket}/*"
+          }]
+        }
 ```
 
-## Development
+### With `--replace-tags` (AWS-compatible):
+```yaml
+Resources:
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Ref: BucketParameter
+      Policy:
+        Fn::Sub: |
+          {
+            "Statement": [{
+              "Effect": "Allow", 
+              "Principal": "*",
+              "Action": "s3:GetObject",
+              "Resource": "${MyBucket}/*"
+            }]
+          }
+```
+
+## 🛠️ Development Workflows
+
+### CI/CD Pipeline Integration
+
+```bash
+# In your CI/CD pipeline
+aws-sam-tools template process --template template.yaml --output processed.yaml --replace-tags
+aws cloudformation deploy --template-file processed.yaml --stack-name my-stack
+```
+
+### Multi-Environment Deployments
+
+```yaml
+# template.yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Description: !CFNToolsToString
+  - Deployed: !CFNToolsTimestamp
+    Version: !CFNToolsVersion
+    Environment: !Ref Environment
+  - ConvertTo: JSONString
+    OneLine: true
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  AppConfig:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/app/${Environment}/config"
+      Value: !CFNToolsIncludeFile config/${Environment}.json
+```
+
+### Configuration Management
+
+```yaml
+# Ensure configuration changes trigger updates
+Resources:
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          CONFIG_HASH: !CFNToolsCRC
+            - !CFNToolsIncludeFile config/lambda-config.json
+          DEPLOYMENT_ID: !CFNToolsUUID
+```
+
+## 📖 Development
 
 ### Requirements
-
 - Python 3.13+
 - uv (package manager)
 
 ### Setup
-
 ```bash
-# Clone repository
 git clone <repository-url>
 cd aws-sam-tools
-
-# Initialize development environment
 make init
-
-# Run tests
 make test
-
-# Type checking
-make pyright
-
-# Format code
-make format
-
-# Build package
-make build
 ```
 
-### Running Tests
-
+### Commands
 ```bash
-# Run all tests
-make test
-
-# Run specific test
-uv run pytest tests/test_cfn.py::test_ref_tag -v
-
-# Run with coverage
-uv run pytest --cov=cfn_tools
+make test      # Run all tests
+make format    # Format code
+make build     # Build package
+make clean     # Clean artifacts
 ```
 
-## Architecture
-
-### Core Components
-
-1. **cfn_tools/cfn_yaml.py** - Core YAML parser with CloudFormation tag support
-2. **cfn_tools/cfn_processing.py** - Extended processing with CFNTools tags  
-3. **cfn_tools/cli.py** - Command line interface
-4. **cfn_tools/openapi.py** - OpenAPI specification processing
-
-### Design Principles
-
-- **Tag Preservation**: CloudFormation tags are preserved as objects for programmatic access
-- **Validation**: All tag constructors validate syntax according to AWS specifications
-- **Error Handling**: Detailed error messages with YAML position information
-- **Extensibility**: Easy to add new processing tags and capabilities
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests for new functionality
-5. Run the test suite (`make test`)
-6. Commit your changes (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
-
-## License
+## 📜 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
-
-## Support
+## 🐛 Support
 
 - 📖 [Documentation](docs/)
 - 🐛 [Issue Tracker](https://github.com/martin-macak/aws-sam-tools/issues)

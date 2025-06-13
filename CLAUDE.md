@@ -19,17 +19,18 @@ make clean     # Clean build artifacts
 
 To run a single test:
 ```bash
-uv run pytest tests/test_cfn.py::test_function_name -v
+uv run pytest tests/test_cfn_tags.py::test_function_name -v
 ```
 
 ## Code Architecture
 
 ### Core Components
 
-1. **aws_sam_tools/cfn_yaml.py** - Heart of the package
+1. **aws_sam_tools/cfn_tags.py** - Heart of the package
    - `CloudFormationLoader`: Custom YAML loader extending `yaml.SafeLoader`
-   - Tag classes for each CloudFormation intrinsic function (RefTag, GetAttTag, SubTag, etc.)
-   - Main API: `load_yaml()` and `load_yaml_file()` functions
+   - `CloudFormationObject`: Base class for all CloudFormation tags with `data`, `name`, and `tag` attributes
+   - Dynamic tag class creation via `inject()` function creates classes like `Ref`, `GetAtt`, `Sub`, etc.
+   - Main API: `load_yaml()`, `load_yaml_file()`, and `dump_yaml()` functions
    - Each tag has a constructor function that validates the YAML node structure
 
 2. **aws_sam_tools/cfn_processing.py** - Extended processing capabilities
@@ -50,24 +51,34 @@ uv run pytest tests/test_cfn.py::test_function_name -v
 
 ### Tag System Architecture
 
-- **Base Class**: `CloudFormationTag` provides common interface for all tags
+- **Base Class**: `CloudFormationObject` provides common interface for all tags
+- **Dynamic Creation**: Tag classes are created dynamically via `inject()` function based on functions list
 - **Tag Preservation**: Tags maintain original CloudFormation syntax as objects
 - **Validation**: Constructor functions validate YAML node structure per AWS specs
 - **Two-Layer System**: 
-  - Core CloudFormation tags (cfn_yaml.py) - preserve AWS syntax
+  - Core CloudFormation tags (cfn_tags.py) - preserve AWS syntax
   - Extended CFNTools tags (cfn_processing.py) - processed immediately during loading
+
+### Key Implementation Details
+
+- **CloudFormationObject attributes**: 
+  - `data`: The actual value (replaces old `value` attribute)
+  - `name`: The intrinsic function name (e.g., "Ref", "Fn::GetAtt")
+  - `tag`: The YAML tag (e.g., "!Ref", "!GetAtt")
+- **!Condition tag**: Has name "Condition" (not "Fn::Condition") since it's not an intrinsic function
+- **GetAtt format**: Supports both dot notation ("MyResource.Attribute") and list format ["MyResource", "Attribute"]
+- **YAML dumping**: May quote some scalar values for CloudFormation tags
 
 ### Testing Strategy
 
 - Modular test structure with dedicated files:
-  - `test_cfn.py`: Core CloudFormation tag parsing
-  - `test_cfn_processing.py`: Extended processing functionality  
-  - `test_cfn_processing_tags.py`: CFNTools tag behavior
-  - `test_cli.py`: CLI template processing
-  - `test_cli_openapi.py`: CLI OpenAPI processing
-  - `test_openapi.py`: OpenAPI rule engine
+  - `test_cfn_tags.py`: Core CloudFormation tag parsing and dumping
+  - `test_cfn_processing.py`: Extended processing functionality and CFNTools tags
+  - `test_cli.py`: CLI template processing commands
+  - `test_openapi.py`: OpenAPI rule engine and CLI processing
 - Test both valid and invalid scenarios with comprehensive error checking
 - CLI tests use filesystem fixtures and output validation
+- Tests accept both quoted and unquoted forms in YAML output assertions
 
 ### Build System
 
@@ -84,3 +95,5 @@ uv run pytest tests/test_cfn.py::test_function_name -v
 - Use Ruff for formatting (200 char line length configured)
 - CFNTools tags are processed during YAML loading, CloudFormation tags preserved as objects
 - The `replace_tags=True` option converts CloudFormation tag objects to AWS-compatible intrinsic functions
+- When writing tests, use `CloudFormationObject` and check `data`/`name` attributes, not old tag classes
+- YAML output may contain quoted values - tests should accept both quoted and unquoted forms
