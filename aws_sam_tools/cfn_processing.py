@@ -35,6 +35,8 @@ from typing import Any, Dict, Optional
 import yaml
 from dunamai import Style
 
+from .cfn_tags import CloudFormationLoader, CloudFormationObject
+
 try:
     from dunamai import Version, get_version
 except ImportError:
@@ -42,65 +44,10 @@ except ImportError:
     Version = None
     get_version = None
 
-from aws_sam_tools.cfn_yaml import (
-    AndTag,
-    Base64Tag,
-    CidrTag,
-    CloudFormationLoader,
-    CloudFormationTag,
-    ConditionTag,
-    EqualsTag,
-    FindInMapTag,
-    GetAttTag,
-    GetAZsTag,
-    IfTag,
-    ImportValueTag,
-    JoinTag,
-    NotTag,
-    OrTag,
-    RefTag,
-    SelectTag,
-    SplitTag,
-    SubTag,
-    TransformTag,
-    get_node_type_name,
-)
 
-
-class CFNToolsIncludeFileTag(CloudFormationTag):
-    """Represents !CFNToolsIncludeFile tag."""
-
-    pass
-
-
-class CFNToolsToStringTag(CloudFormationTag):
-    """Represents !CFNToolsToString tag."""
-
-    pass
-
-
-class CFNToolsUUIDTag(CloudFormationTag):
-    """Represents !CFNToolsUUID tag."""
-
-    pass
-
-
-class CFNToolsVersionTag(CloudFormationTag):
-    """Represents !CFNToolsVersion tag."""
-
-    pass
-
-
-class CFNToolsTimestampTag(CloudFormationTag):
-    """Represents !CFNToolsTimestamp tag."""
-
-    pass
-
-
-class CFNToolsCRCTag(CloudFormationTag):
-    """Represents !CFNToolsCRC tag."""
-
-    pass
+def get_node_type_name(node: yaml.Node) -> str:
+    """Get the name of the node type."""
+    return node.__class__.__name__
 
 
 def construct_cfntools_include_file(loader: yaml.Loader, node: yaml.Node) -> Any:
@@ -115,7 +62,12 @@ def construct_cfntools_include_file(loader: yaml.Loader, node: yaml.Node) -> Any
 
     file_path = loader.construct_scalar(node)
     if not file_path:
-        raise yaml.constructor.ConstructorError(None, None, "!CFNToolsIncludeFile tag must specify a file path", node.start_mark)
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            "!CFNToolsIncludeFile tag must specify a file path",
+            node.start_mark,
+        )
 
     # If relative path, resolve from YAML file location
     if not os.path.isabs(file_path):
@@ -128,7 +80,12 @@ def construct_cfntools_include_file(loader: yaml.Loader, node: yaml.Node) -> Any
 
     # Check if file exists
     if not os.path.exists(file_path):
-        raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsIncludeFile: file not found: {file_path}", node.start_mark)
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            f"!CFNToolsIncludeFile: file not found: {file_path}",
+            node.start_mark,
+        )
 
     # Determine file type and load accordingly
     mime_type, _ = mimetypes.guess_type(file_path)
@@ -148,18 +105,24 @@ def construct_cfntools_include_file(loader: yaml.Loader, node: yaml.Node) -> Any
             # Return as plain string for other file types
             return content
     except Exception as e:
-        raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsIncludeFile: error reading file {file_path}: {str(e)}", node.start_mark)
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            f"!CFNToolsIncludeFile: error reading file {file_path}: {str(e)}",
+            node.start_mark,
+        )
 
 
-def cloudformation_tag_to_dict(tag: CloudFormationTag) -> Dict[str, Any]:
+def cloudformation_tag_to_dict(tag: CloudFormationObject) -> Dict[str, Any]:
     """Convert CloudFormation tag to a dictionary representation."""
-    tag_name = "!" + tag.__class__.__name__.replace("Tag", "")
-    return {tag_name: tag.value}
+    result = tag.to_json()
+    # to_json always returns a dict with string keys
+    return result  # type: ignore[return-value]
 
 
 def prepare_value_for_serialization(value: Any) -> Any:
     """Recursively prepare a value for JSON/YAML serialization by converting CloudFormation tags."""
-    if isinstance(value, CloudFormationTag):
+    if isinstance(value, CloudFormationObject):
         return cloudformation_tag_to_dict(value)
     elif isinstance(value, dict):
         return {k: prepare_value_for_serialization(v) for k, v in value.items()}
@@ -181,7 +144,12 @@ def construct_cfntools_to_string(loader: yaml.Loader, node: yaml.Node) -> str:
 
     values = loader.construct_sequence(node, deep=True)
     if not values:
-        raise yaml.constructor.ConstructorError(None, None, "!CFNToolsToString requires at least one parameter", node.start_mark)
+        raise yaml.constructor.ConstructorError(
+            None,
+            None,
+            "!CFNToolsToString requires at least one parameter",
+            node.start_mark,
+        )
 
     # First element is the value to convert
     value = values[0]
@@ -192,7 +160,12 @@ def construct_cfntools_to_string(loader: yaml.Loader, node: yaml.Node) -> str:
 
     if len(values) > 1:
         if not isinstance(values[1], dict):
-            raise yaml.constructor.ConstructorError(None, None, "!CFNToolsToString optional parameters must be a mapping", node.start_mark)
+            raise yaml.constructor.ConstructorError(
+                None,
+                None,
+                "!CFNToolsToString optional parameters must be a mapping",
+                node.start_mark,
+            )
 
         options = values[1]
         if "ConvertTo" in options:
@@ -208,7 +181,12 @@ def construct_cfntools_to_string(loader: yaml.Loader, node: yaml.Node) -> str:
         if "OneLine" in options:
             one_line = options["OneLine"]
             if not isinstance(one_line, bool):
-                raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsToString OneLine must be a boolean, got {type(one_line).__name__}", node.start_mark)
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"!CFNToolsToString OneLine must be a boolean, got {type(one_line).__name__}",
+                    node.start_mark,
+                )
 
     # Convert value to string
     if isinstance(value, str):
@@ -338,7 +316,15 @@ def construct_cfntools_timestamp(loader: yaml.Loader, node: yaml.Node) -> str:
 
         if "OffsetUnit" in options:
             offset_unit = options["OffsetUnit"]
-            valid_units = ["seconds", "minutes", "hours", "days", "weeks", "months", "years"]
+            valid_units = [
+                "seconds",
+                "minutes",
+                "hours",
+                "days",
+                "weeks",
+                "months",
+                "years",
+            ]
             if offset_unit not in valid_units:
                 raise yaml.constructor.ConstructorError(
                     None,
@@ -410,7 +396,12 @@ def construct_cfntools_crc(loader: yaml.Loader, node: yaml.Node) -> str:
 
     if len(values) > 1:
         if not isinstance(values[1], dict):
-            raise yaml.constructor.ConstructorError(None, None, "!CFNToolsCRC optional parameters must be a mapping", node.start_mark)
+            raise yaml.constructor.ConstructorError(
+                None,
+                None,
+                "!CFNToolsCRC optional parameters must be a mapping",
+                node.start_mark,
+            )
 
         options = values[1]
         if "Algorithm" in options:
@@ -449,13 +440,23 @@ def construct_cfntools_crc(loader: yaml.Loader, node: yaml.Node) -> str:
                     file_path = os.path.abspath(file_path)
 
             if not os.path.exists(file_path):
-                raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsCRC: file not found: {file_path}", node.start_mark)
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"!CFNToolsCRC: file not found: {file_path}",
+                    node.start_mark,
+                )
 
             try:
                 with open(file_path, "rb") as f:
                     data = f.read()
             except Exception as e:
-                raise yaml.constructor.ConstructorError(None, None, f"!CFNToolsCRC: error reading file {file_path}: {str(e)}", node.start_mark)
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"!CFNToolsCRC: error reading file {file_path}: {str(e)}",
+                    node.start_mark,
+                )
         else:
             # Use string as-is
             data = value.encode("utf-8")
@@ -525,48 +526,13 @@ def replace_cloudformation_tags(data: Any) -> Any:
     - !Or -> {"Fn::Or": value}
     - !Condition -> {"Condition": value}
     """
-    if isinstance(data, RefTag):
-        return {"Ref": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, GetAttTag):
-        return {"Fn::GetAtt": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, GetAZsTag):
-        return {"Fn::GetAZs": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, ImportValueTag):
-        return {"Fn::ImportValue": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, JoinTag):
-        return {"Fn::Join": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, SelectTag):
-        return {"Fn::Select": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, SplitTag):
-        return {"Fn::Split": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, SubTag):
-        # Sub tag stores value as a list, but for simple strings we want just the string
-        replaced_value = replace_cloudformation_tags(data.value)
-        if isinstance(replaced_value, list) and len(replaced_value) == 1:
-            return {"Fn::Sub": replaced_value[0]}
-        else:
-            return {"Fn::Sub": replaced_value}
-    elif isinstance(data, FindInMapTag):
-        return {"Fn::FindInMap": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, Base64Tag):
-        return {"Fn::Base64": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, CidrTag):
-        return {"Fn::Cidr": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, TransformTag):
-        return {"Fn::Transform": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, AndTag):
-        return {"Fn::And": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, EqualsTag):
-        return {"Fn::Equals": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, IfTag):
-        return {"Fn::If": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, NotTag):
-        return {"Fn::Not": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, OrTag):
-        return {"Fn::Or": replace_cloudformation_tags(data.value)}
-    elif isinstance(data, ConditionTag):
-        # Condition is not an intrinsic function but a reference
-        return {"Condition": data.value}
+    if isinstance(data, CloudFormationObject):
+        # Get the intrinsic function representation
+        intrinsic = data.to_json()
+        # Recursively process the value inside
+        for key, value in intrinsic.items():
+            intrinsic[key] = replace_cloudformation_tags(value)
+        return intrinsic
     elif isinstance(data, dict):
         return {k: replace_cloudformation_tags(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -642,7 +608,7 @@ def process_yaml_template(template_path: str, replace_tags: bool = False, **dump
         >>> yaml_output = process_yaml_template('template.yaml', replace_tags=True)
         >>> print(yaml_output)  # Tags converted to {"Ref": "..."}, {"Fn::Sub": "..."}, etc.
     """
-    from aws_sam_tools.cfn_yaml import dump_yaml
+    from .cfn_tags import dump_yaml
 
     # Check if file exists
     template_file = Path(template_path)

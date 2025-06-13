@@ -199,8 +199,15 @@ Properties:
         # Load and verify CloudFormation tags are preserved
         result = load_yaml_file(str(main_file))
         assert result["Resources"]["S3Bucket"]["Type"] == "AWS::S3::Bucket"
-        assert hasattr(result["Resources"]["S3Bucket"]["Properties"]["BucketName"], "value")
-        assert hasattr(result["Resources"]["S3Bucket"]["Properties"]["Tags"][0]["Value"], "value")
+        bucket_name = result["Resources"]["S3Bucket"]["Properties"]["BucketName"]
+        from aws_sam_tools.cfn_tags import CloudFormationObject
+
+        assert isinstance(bucket_name, CloudFormationObject)
+        assert bucket_name.data == "BucketNameParam"
+
+        tag_value = result["Resources"]["S3Bucket"]["Properties"]["Tags"][0]["Value"]
+        assert isinstance(tag_value, CloudFormationObject)
+        assert tag_value.name == "Fn::Sub"
 
 
 class TestCFNToolsToString:
@@ -932,9 +939,13 @@ class TestCloudFormationTagReplacement:
       BucketName: !Ref BucketParam"""
 
         result = load_yaml(yaml_content, replace_tags=False)
-        # Check that the RefTag object is preserved
-        assert hasattr(result["Resources"]["MyBucket"]["Properties"]["BucketName"], "value")
-        assert result["Resources"]["MyBucket"]["Properties"]["BucketName"].value == "BucketParam"
+        # Check that the CloudFormationObject is preserved
+        bucket_name = result["Resources"]["MyBucket"]["Properties"]["BucketName"]
+        from aws_sam_tools.cfn_tags import CloudFormationObject
+
+        assert isinstance(bucket_name, CloudFormationObject)
+        assert bucket_name.data == "BucketParam"
+        assert bucket_name.name == "Ref"
 
     def test_replace_tags_in_file(self, tmp_path) -> None:
         """Test replacing tags when loading from file."""
@@ -1281,7 +1292,7 @@ Outputs:
         result_yaml = process_yaml_template(str(template_file), replace_tags=False)
 
         # Load the processed YAML back to verify it's valid and check the structure
-        from aws_sam_tools.cfn_yaml import load_yaml
+        from aws_sam_tools.cfn_tags import load_yaml
 
         processed_data = load_yaml(result_yaml)
 
@@ -1296,19 +1307,21 @@ Outputs:
 
         # Validate CloudFormation tags are preserved as tag objects
         s3_bucket = processed_data["Resources"]["S3Bucket"]
-        assert hasattr(s3_bucket["Condition"], "value"), "Condition should be a CloudFormation tag object"
-        assert hasattr(s3_bucket["Properties"]["BucketName"], "value"), "BucketName should be a CloudFormation tag object"
-        assert hasattr(s3_bucket["Properties"]["VersioningConfiguration"]["Status"], "value"), "Status should be a CloudFormation tag object"
+        from aws_sam_tools.cfn_tags import CloudFormationObject
+
+        assert isinstance(s3_bucket["Condition"], CloudFormationObject), "Condition should be a CloudFormation tag object"
+        assert isinstance(s3_bucket["Properties"]["BucketName"], CloudFormationObject), "BucketName should be a CloudFormation tag object"
+        assert isinstance(s3_bucket["Properties"]["VersioningConfiguration"]["Status"], CloudFormationObject), "Status should be a CloudFormation tag object"
 
         # Validate CloudFormation tags in different sections
         lambda_func = processed_data["Resources"]["LambdaFunction"]
-        assert hasattr(lambda_func["Properties"]["FunctionName"], "value"), "FunctionName should be a CloudFormation tag object"
-        assert hasattr(lambda_func["Properties"]["Role"], "value"), "Role should be a CloudFormation tag object"
-        assert hasattr(lambda_func["Properties"]["Environment"]["Variables"]["BUCKET_NAME"], "value"), "BUCKET_NAME should be a CloudFormation tag object"
+        assert isinstance(lambda_func["Properties"]["FunctionName"], CloudFormationObject), "FunctionName should be a CloudFormation tag object"
+        assert isinstance(lambda_func["Properties"]["Role"], CloudFormationObject), "Role should be a CloudFormation tag object"
+        assert isinstance(lambda_func["Properties"]["Environment"]["Variables"]["BUCKET_NAME"], CloudFormationObject), "BUCKET_NAME should be a CloudFormation tag object"
 
         # Validate CFNTools tags were processed correctly
         # UUID should be a string now (processed)
-        uuid_value = s3_bucket["Properties"]["BucketName"].value[1]["UUID"]
+        uuid_value = s3_bucket["Properties"]["BucketName"].data[1]["UUID"]
         assert isinstance(uuid_value, str), "UUID should be processed to a string"
         import re
 
@@ -1351,7 +1364,7 @@ Outputs:
         assert role_policy["Statement"][0]["Effect"] == "Allow"
         assert role_policy["Statement"][0]["Action"] == "s3:GetObject"
         # The !Sub tag in the included file should be preserved
-        assert hasattr(role_policy["Statement"][0]["Resource"], "value"), "Resource should be a CloudFormation tag object"
+        assert isinstance(role_policy["Statement"][0]["Resource"], CloudFormationObject), "Resource should be a CloudFormation tag object"
 
         # MD5 checksum in outputs should be processed
         config_checksum_value = processed_data["Outputs"]["ConfigChecksum"]["Value"]
@@ -1441,7 +1454,7 @@ Conditions:
         processed_yaml = process_yaml_template(str(template_file), replace_tags=False)
 
         # Step 2: Load the processed YAML again with CloudFormation loader to verify tags survived
-        from aws_sam_tools.cfn_yaml import EqualsTag, GetAttTag, IfTag, JoinTag, RefTag, SelectTag, SplitTag, SubTag, load_yaml
+        from aws_sam_tools.cfn_tags import CloudFormationObject, load_yaml
 
         reloaded_data = load_yaml(processed_yaml)
 
@@ -1456,8 +1469,9 @@ Conditions:
 
         # BucketName should be a SubTag (CloudFormation tag preserved)
         bucket_name_tag = s3_bucket["Properties"]["BucketName"]
-        assert isinstance(bucket_name_tag, SubTag), "BucketName should be SubTag object"
-        assert bucket_name_tag.value == ["${AWS::StackName}-bucket"], "BucketName SubTag should have correct template"
+        assert isinstance(bucket_name_tag, CloudFormationObject), "BucketName should be CloudFormationObject"
+        assert bucket_name_tag.name == "Fn::Sub", "Should be Sub tag"
+        assert bucket_name_tag.data == "${AWS::StackName}-bucket", "BucketName Sub tag should have correct template"
 
         # BucketId should be processed UUID (CFNTools tag processed)
         bucket_id_value = s3_bucket["Properties"]["BucketId"]
@@ -1474,61 +1488,72 @@ Conditions:
         assert re.match(timestamp_pattern, created_at_value), "CreatedAt should be valid timestamp"
 
         # Verify CloudFormation tags are properly preserved as tag objects
-        # Environment should be RefTag
+        # Environment should be Ref tag
         environment_tag = s3_bucket["Properties"]["Tags"][0]["Value"]
-        assert isinstance(environment_tag, RefTag), "Environment should be RefTag object"
-        assert environment_tag.value == "Environment", "RefTag should reference 'Environment'"
+        assert isinstance(environment_tag, CloudFormationObject), "Environment should be CloudFormationObject"
+        assert environment_tag.name == "Ref", "Should be Ref tag"
+        assert environment_tag.data == "Environment", "Ref should reference 'Environment'"
 
-        # Status should be IfTag
+        # Status should be If tag
         status_tag = s3_bucket["Properties"]["VersioningConfiguration"]["Status"]
-        assert isinstance(status_tag, IfTag), "Status should be IfTag object"
-        assert status_tag.value == ["IsProduction", "Enabled", "Suspended"], "IfTag should have correct condition and values"
+        assert isinstance(status_tag, CloudFormationObject), "Status should be CloudFormationObject"
+        assert status_tag.name == "Fn::If", "Should be If tag"
+        assert status_tag.data == ["IsProduction", "Enabled", "Suspended"], "If tag should have correct condition and values"
 
-        # Topic should be GetAttTag
+        # Topic should be GetAtt tag
         topic_tag = s3_bucket["Properties"]["NotificationConfiguration"]["TopicConfigurations"][0]["Topic"]
-        assert isinstance(topic_tag, GetAttTag), "Topic should be GetAttTag object"
-        assert topic_tag.value == ["MyTopic", "Arn"], "GetAttTag should reference MyTopic.Arn"
+        assert isinstance(topic_tag, CloudFormationObject), "Topic should be CloudFormationObject"
+        assert topic_tag.name == "Fn::GetAtt", "Should be GetAtt tag"
+        # GetAtt can be either a list or a string with dot notation
+        assert topic_tag.data == ["MyTopic", "Arn"] or topic_tag.data == "MyTopic.Arn", "GetAtt should reference MyTopic.Arn"
 
-        # TopicName should be JoinTag with nested tags
+        # TopicName should be Join tag with nested tags
         my_topic = reloaded_data["Resources"]["MyTopic"]
         topic_name_tag = my_topic["Properties"]["TopicName"]
-        assert isinstance(topic_name_tag, JoinTag), "TopicName should be JoinTag object"
+        assert isinstance(topic_name_tag, CloudFormationObject), "TopicName should be CloudFormationObject"
+        assert topic_name_tag.name == "Fn::Join", "Should be Join tag"
 
-        # Verify the JoinTag structure: [delimiter, [values...]]
-        join_value = topic_name_tag.value
-        assert isinstance(join_value, list) and len(join_value) == 2, "JoinTag should have delimiter and values"
+        # Verify the Join tag structure: [delimiter, [values...]]
+        join_value = topic_name_tag.data
+        assert isinstance(join_value, list) and len(join_value) == 2, "Join tag should have delimiter and values"
         assert join_value[0] == "-", "Join delimiter should be '-'"
 
-        # Values should contain RefTag and SelectTag
+        # Values should contain Ref and Select tags
         join_values = join_value[1]
-        assert isinstance(join_values[0], RefTag), "First join value should be RefTag"
-        assert join_values[0].value == "AWS::StackName", "RefTag should reference AWS::StackName"
+        assert isinstance(join_values[0], CloudFormationObject), "First join value should be CloudFormationObject"
+        assert join_values[0].name == "Ref", "Should be Ref tag"
+        assert join_values[0].data == "AWS::StackName", "Ref should reference AWS::StackName"
         assert join_values[1] == "notifications", "Second join value should be literal string"
-        assert isinstance(join_values[2], SelectTag), "Third join value should be SelectTag"
+        assert isinstance(join_values[2], CloudFormationObject), "Third join value should be CloudFormationObject"
+        assert join_values[2].name == "Fn::Select", "Should be Select tag"
 
-        # Verify SelectTag contains SplitTag
+        # Verify Select tag contains Split tag
         select_tag = join_values[2]
-        select_value = select_tag.value
-        assert select_value[0] == 0, "SelectTag should select index 0"
-        assert isinstance(select_value[1], SplitTag), "SelectTag should contain SplitTag"
+        select_value = select_tag.data
+        assert select_value[0] == 0, "Select tag should select index 0"
+        assert isinstance(select_value[1], CloudFormationObject), "Select tag should contain Split tag"
+        assert select_value[1].name == "Fn::Split", "Should be Split tag"
 
-        # Verify SplitTag contains RefTag
+        # Verify Split tag contains Ref tag
         split_tag = select_value[1]
-        split_value = split_tag.value
-        assert split_value[0] == "-", "SplitTag delimiter should be '-'"
-        assert isinstance(split_value[1], RefTag), "SplitTag should contain RefTag"
-        assert split_value[1].value == "AWS::AccountId", "RefTag should reference AWS::AccountId"
+        split_value = split_tag.data
+        assert split_value[0] == "-", "Split tag delimiter should be '-'"
+        assert isinstance(split_value[1], CloudFormationObject), "Split tag should contain Ref tag"
+        assert split_value[1].name == "Ref", "Should be Ref tag"
+        assert split_value[1].data == "AWS::AccountId", "Ref should reference AWS::AccountId"
 
-        # Verify Condition is EqualsTag
+        # Verify Condition is Equals tag
         condition_tag = reloaded_data["Conditions"]["IsProduction"]
-        assert isinstance(condition_tag, EqualsTag), "Condition should be EqualsTag object"
-        condition_value = condition_tag.value
-        assert isinstance(condition_value[0], RefTag), "First equals value should be RefTag"
-        assert condition_value[0].value == "Environment", "RefTag should reference Environment"
+        assert isinstance(condition_tag, CloudFormationObject), "Condition should be CloudFormationObject"
+        assert condition_tag.name == "Fn::Equals", "Should be Equals tag"
+        condition_value = condition_tag.data
+        assert isinstance(condition_value[0], CloudFormationObject), "First equals value should be CloudFormationObject"
+        assert condition_value[0].name == "Ref", "Should be Ref tag"
+        assert condition_value[0].data == "Environment", "Ref should reference Environment"
         assert condition_value[1] == "production", "Second equals value should be 'production'"
 
         # Step 3: Verify the reloaded data can be dumped again and still contains CloudFormation tags
-        from aws_sam_tools.cfn_yaml import dump_yaml
+        from aws_sam_tools.cfn_tags import dump_yaml
 
         redumped_yaml = dump_yaml(reloaded_data)
 
@@ -1540,23 +1565,29 @@ Conditions:
 
         # Check that tag types are preserved
         final_environment_tag = final_s3_bucket["Properties"]["Tags"][0]["Value"]
-        assert isinstance(final_environment_tag, RefTag), "Environment should still be RefTag after round-trip"
-        assert final_environment_tag.value == "Environment", "RefTag value should be preserved"
+        assert isinstance(final_environment_tag, CloudFormationObject), "Environment should still be CloudFormationObject after round-trip"
+        assert final_environment_tag.name == "Ref", "Should be Ref tag"
+        assert final_environment_tag.data == "Environment", "Ref tag value should be preserved"
 
         final_status_tag = final_s3_bucket["Properties"]["VersioningConfiguration"]["Status"]
-        assert isinstance(final_status_tag, IfTag), "Status should still be IfTag after round-trip"
+        assert isinstance(final_status_tag, CloudFormationObject), "Status should still be CloudFormationObject after round-trip"
+        assert final_status_tag.name == "Fn::If", "Should be If tag"
 
         final_topic_tag = final_s3_bucket["Properties"]["NotificationConfiguration"]["TopicConfigurations"][0]["Topic"]
-        assert isinstance(final_topic_tag, GetAttTag), "Topic should still be GetAttTag after round-trip"
-        assert final_topic_tag.value == ["MyTopic", "Arn"], "GetAttTag value should be preserved"
+        assert isinstance(final_topic_tag, CloudFormationObject), "Topic should still be CloudFormationObject after round-trip"
+        assert final_topic_tag.name == "Fn::GetAtt", "Should be GetAtt tag"
+        # GetAtt can be either a list or a string with dot notation
+        assert final_topic_tag.data == ["MyTopic", "Arn"] or final_topic_tag.data == "MyTopic.Arn", "GetAtt tag value should be preserved"
 
         final_condition_tag = final_reloaded_data["Conditions"]["IsProduction"]
-        assert isinstance(final_condition_tag, EqualsTag), "Condition should still be EqualsTag after round-trip"
+        assert isinstance(final_condition_tag, CloudFormationObject), "Condition should still be CloudFormationObject after round-trip"
+        assert final_condition_tag.name == "Fn::Equals", "Should be Equals tag"
 
         # Verify CFNTools processing results are preserved (UUID and timestamp should still be there)
         final_bucket_name_tag = final_s3_bucket["Properties"]["BucketName"]
-        assert isinstance(final_bucket_name_tag, SubTag), "BucketName should still be SubTag after round-trip"
-        assert final_bucket_name_tag.value == ["${AWS::StackName}-bucket"], "BucketName SubTag should be preserved"
+        assert isinstance(final_bucket_name_tag, CloudFormationObject), "BucketName should still be CloudFormationObject after round-trip"
+        assert final_bucket_name_tag.name == "Fn::Sub", "Should be Sub tag"
+        assert final_bucket_name_tag.data == "${AWS::StackName}-bucket", "BucketName Sub tag should be preserved"
 
         final_bucket_id_value = final_s3_bucket["Properties"]["BucketId"]
         assert isinstance(final_bucket_id_value, str), "BucketId should still be string after round-trip"
@@ -1602,7 +1633,8 @@ Conditions:
         cf_only_template.write_text(cf_only_content)
 
         result = process_yaml_template(str(cf_only_template))
-        assert "!Ref BucketName" in result
+        # Accept both quoted and unquoted forms
+        assert "!Ref BucketName" in result or "!Ref 'BucketName'" in result
 
         # Test template with only CFNTools tags
         cfntools_only_template = tmp_path / "cfntools_only.yaml"
@@ -1653,10 +1685,11 @@ Parameters:
         result = process_yaml_template(str(template_file), replace_tags=False)
 
         # Verify CloudFormation tags are preserved in output
-        assert "!Ref BucketNameParameter" in result
-        assert "!Sub ${Environment}-bucket" in result
-        assert "!Sub ${AWS::StackName}-function" in result
-        assert "!GetAtt MyRole.Arn" in result
+        # Accept both quoted and unquoted forms
+        assert "!Ref BucketNameParameter" in result or "!Ref 'BucketNameParameter'" in result
+        assert "!Sub '${Environment}-bucket'" in result or '!Sub "${Environment}-bucket"' in result
+        assert "!Sub '${AWS::StackName}-function'" in result or '!Sub "${AWS::StackName}-function"' in result
+        assert "!GetAtt 'MyRole.Arn'" in result or "!GetAtt MyRole.Arn" in result
         assert "!Base64" in result
 
         # Verify the structure is maintained
@@ -1719,7 +1752,8 @@ Parameters:
         result = process_yaml_template(str(template_file), replace_tags=False)
 
         # CloudFormation tags should be preserved
-        assert "!Ref BucketNameParameter" in result
+        # Accept both quoted and unquoted forms
+        assert "!Ref BucketNameParameter" in result or "!Ref 'BucketNameParameter'" in result
 
         # CFNTools tags should be processed (included file content should be present)
         assert "database:" in result
@@ -1742,8 +1776,8 @@ Parameters:
           MyBucket:
             Type: AWS::S3::Bucket
             Properties:
-              BucketName: !Ref
-        """  # Invalid YAML - !Ref without value
+              BucketName: !InvalidTag SomeValue
+        """  # Invalid YAML - unknown tag
         template_file.write_text(template_content)
 
         with pytest.raises(Exception):  # Should raise some kind of parsing error
@@ -1796,12 +1830,13 @@ Parameters:
 
         # Verify all nested tags are preserved
         assert "!Sub" in result
-        assert "!Ref AWS::StackName" in result
-        assert "!Ref BucketSuffix" in result
+        # Accept both quoted and unquoted forms
+        assert "!Ref AWS::StackName" in result or "!Ref 'AWS::StackName'" in result
+        assert "!Ref BucketSuffix" in result or "!Ref 'BucketSuffix'" in result
         assert "!Join" in result
         assert "!Select" in result
         assert "!Split" in result
-        assert "!Ref Environment" in result
+        assert "!Ref Environment" in result or "!Ref 'Environment'" in result
 
         # Test with replace_tags=True
         result_replaced = process_yaml_template(str(template_file), replace_tags=True)
@@ -1861,7 +1896,9 @@ class TestIntegration:
 
         result = load_yaml(yaml_content)
         # Check CloudFormation tags are preserved
-        assert hasattr(result["Resources"]["Bucket"]["Properties"]["BucketName"], "value")
+        from aws_sam_tools.cfn_tags import CloudFormationObject
+
+        assert isinstance(result["Resources"]["Bucket"]["Properties"]["BucketName"], CloudFormationObject)
         # Check new tag worked
         assert isinstance(result["Resources"]["Bucket"]["Properties"]["Policy"], str)
         assert "Statement" in result["Resources"]["Bucket"]["Properties"]["Policy"]

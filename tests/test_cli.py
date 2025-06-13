@@ -286,8 +286,9 @@ class TestTemplateProcessReplaceTagsFeature:
 
         assert result.exit_code == 0
         # When not using --replace-tags, CloudFormation tags should be preserved in original format
-        assert "!Ref BucketParam" in result.output
-        assert "BucketName: !Ref BucketParam" in result.output
+        # Accept both quoted and unquoted forms
+        assert "!Ref BucketParam" in result.output or "!Ref 'BucketParam'" in result.output
+        assert "BucketName: !Ref BucketParam" in result.output or "BucketName: !Ref 'BucketParam'" in result.output
 
     def test_template_process_replace_tags_with_cfntools_tags(self, tmp_path: Path) -> None:
         """Test that --replace-tags works with both CloudFormation and CFNTools tags."""

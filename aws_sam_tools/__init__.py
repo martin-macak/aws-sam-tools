@@ -24,6 +24,6 @@ Example:
     >>> print(template)
 """
 
-from . import cfn_processing, cfn_yaml
+from . import cfn_processing
 
-__all__ = ["cfn_yaml", "cfn_processing"]
+__all__ = ["cfn_processing"]
